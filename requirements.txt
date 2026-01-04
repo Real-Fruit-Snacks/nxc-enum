@@ -1,0 +1,19 @@
+# nxc-enum Runtime Dependencies
+# ==============================
+#
+# nxc-enum has ZERO Python package dependencies.
+# It uses only the Python standard library.
+#
+# External Requirement:
+# ---------------------
+# NetExec (nxc) must be installed and available in PATH
+#
+# Install NetExec from: https://github.com/Pennyw0rth/NetExec
+#   pip install netexec
+#   - or -
+#   pipx install netexec
+#
+# Verify installation:
+#   nxc --version
+#
+# This file is intentionally empty to document the zero-dependency nature.

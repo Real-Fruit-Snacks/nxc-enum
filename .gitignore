@@ -1,0 +1,227 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# pdm
+.pdm.toml
+.pdm-python
+.pdm-build/
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# IDE settings
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ============================================
+# Security Tool Specific - NEVER COMMIT THESE
+# ============================================
+
+# Credential files
+creds.txt
+*.creds
+passwords.txt
+users.txt
+hashes.txt
+userpass.txt
+credentials.txt
+secrets.txt
+*.secret
+
+# Enumeration output files
+results.txt
+results.json
+*.enum
+*.enum.txt
+*.enum.json
+output.txt
+output.json
+
+# Temporary analysis files
+*.tmp
+*.bak
+*.backup
+
+# Local development notes (may contain target info)
+notes.md
+notes.txt
+targets.txt
+targets.md
+scope.txt
+scope.md
+
+# NXC database files
+*.db
+nxc.db
+
+# ============================================
+# Internal Development Documents - DO NOT COMMIT
+# ============================================
+
+# Analysis and review reports
+code_analysis_report.md
+fix_changelog.md
+fix_verification_report.md
+github_release_prep_report.md
+*_report.md
+*_analysis.md
+*_review.md
+
+# Internal documentation
+TODO.md
+NOTES.md
+INTERNAL.md
+PRIVATE.md
+*.private.md
+*.internal.md
+
+# Development logs
+dev_log.md
+dev_notes.md
+debug_log.md
+*.dev.md
+
+# Draft documents
+draft_*.md
+*.draft.md
+WIP_*.md
+*.wip.md
