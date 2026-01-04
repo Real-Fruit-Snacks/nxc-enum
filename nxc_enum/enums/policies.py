@@ -1,32 +1,42 @@
 """Password policy enumeration."""
 
 import re
-from ..core.runner import run_nxc
-from ..core.output import output, status, print_section, debug_nxc, JSON_DATA
-from ..core.colors import Colors, c
 
+from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.runner import run_nxc
 
 # Regex patterns for verbose --pass-pol output parsing
 # Fine-grained password policies (FGPP)
-RE_FGPP_NAME = re.compile(r'(?:Fine-?grained|FGPP|PSO).*?(?:Name|Policy)[:\s]+([^\n\r]+)', re.IGNORECASE)
-RE_FGPP_PRECEDENCE = re.compile(r'Precedence[:\s]+(\d+)', re.IGNORECASE)
-RE_FGPP_APPLIES = re.compile(r'(?:Applies\s+to|msDS-PSOAppliesTo)[:\s]+([^\n\r]+)', re.IGNORECASE)
+RE_FGPP_NAME = re.compile(
+    r"(?:Fine-?grained|FGPP|PSO).*?(?:Name|Policy)[:\s]+([^\n\r]+)", re.IGNORECASE
+)
+RE_FGPP_PRECEDENCE = re.compile(r"Precedence[:\s]+(\d+)", re.IGNORECASE)
+RE_FGPP_APPLIES = re.compile(r"(?:Applies\s+to|msDS-PSOAppliesTo)[:\s]+([^\n\r]+)", re.IGNORECASE)
 
 # Domain functional level
-RE_DOMAIN_LEVEL = re.compile(r'(?:Domain\s+)?(?:Functional\s+)?Level[:\s]+([^\n\r]+)', re.IGNORECASE)
-RE_DOMAIN_MODE = re.compile(r'(?:Domain\s+Mode|domainFunctionality)[:\s]+([^\n\r]+)', re.IGNORECASE)
-RE_FOREST_LEVEL = re.compile(r'(?:Forest\s+)?(?:Functional\s+)?Level[:\s]+([^\n\r]+)', re.IGNORECASE)
+RE_DOMAIN_LEVEL = re.compile(
+    r"(?:Domain\s+)?(?:Functional\s+)?Level[:\s]+([^\n\r]+)", re.IGNORECASE
+)
+RE_DOMAIN_MODE = re.compile(r"(?:Domain\s+Mode|domainFunctionality)[:\s]+([^\n\r]+)", re.IGNORECASE)
+RE_FOREST_LEVEL = re.compile(
+    r"(?:Forest\s+)?(?:Functional\s+)?Level[:\s]+([^\n\r]+)", re.IGNORECASE
+)
 
 # Policy enforcement details
-RE_POLICY_ENFORCED = re.compile(r'(?:Policy\s+)?(?:Enforcement|Enforced)[:\s]+([^\n\r]+)', re.IGNORECASE)
-RE_CLEAR_TEXT = re.compile(r'(?:Store\s+)?(?:Clear\s*text|Reversible\s+Encryption)[:\s]+([^\n\r]+)', re.IGNORECASE)
-RE_KERBEROS_POLICY = re.compile(r'Kerberos[:\s]+([^\n\r]+)', re.IGNORECASE)
-RE_FORCE_LOGOFF = re.compile(r'(?:Force\s+)?Logoff[:\s]+([^\n\r]+)', re.IGNORECASE)
+RE_POLICY_ENFORCED = re.compile(
+    r"(?:Policy\s+)?(?:Enforcement|Enforced)[:\s]+([^\n\r]+)", re.IGNORECASE
+)
+RE_CLEAR_TEXT = re.compile(
+    r"(?:Store\s+)?(?:Clear\s*text|Reversible\s+Encryption)[:\s]+([^\n\r]+)", re.IGNORECASE
+)
+RE_KERBEROS_POLICY = re.compile(r"Kerberos[:\s]+([^\n\r]+)", re.IGNORECASE)
+RE_FORCE_LOGOFF = re.compile(r"(?:Force\s+)?Logoff[:\s]+([^\n\r]+)", re.IGNORECASE)
 
 # Additional policy attributes
-RE_PASSWORD_PROPERTIES = re.compile(r'Password\s+Properties[:\s]+(\S+)', re.IGNORECASE)
-RE_DOMAIN_SID = re.compile(r'(?:Domain\s+)?SID[:\s]+(S-\d+-\d+(?:-\d+)+)', re.IGNORECASE)
-RE_INFO_LINE = re.compile(r'\[INFO\].*?(policy|password|lockout|domain|level)', re.IGNORECASE)
+RE_PASSWORD_PROPERTIES = re.compile(r"Password\s+Properties[:\s]+(\S+)", re.IGNORECASE)
+RE_DOMAIN_SID = re.compile(r"(?:Domain\s+)?SID[:\s]+(S-\d+-\d+(?:-\d+)+)", re.IGNORECASE)
+RE_INFO_LINE = re.compile(r"\[INFO\].*?(policy|password|lockout|domain|level)", re.IGNORECASE)
 
 
 def parse_verbose_policy_info(stdout: str) -> dict:
@@ -43,21 +53,21 @@ def parse_verbose_policy_info(stdout: str) -> dict:
         - info_messages: list of relevant INFO lines
     """
     verbose_data = {
-        'fine_grained_policies': [],
-        'domain_functional_level': None,
-        'forest_functional_level': None,
-        'policy_enforcement': {},
-        'password_properties': None,
-        'domain_sid': None,
-        'kerberos_policy': None,
-        'force_logoff': None,
-        'clear_text_passwords': None,
-        'info_messages': []
+        "fine_grained_policies": [],
+        "domain_functional_level": None,
+        "forest_functional_level": None,
+        "policy_enforcement": {},
+        "password_properties": None,
+        "domain_sid": None,
+        "kerberos_policy": None,
+        "force_logoff": None,
+        "clear_text_passwords": None,
+        "info_messages": [],
     }
 
     current_fgpp = None
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         line_stripped = line.strip()
         if not line_stripped:
             continue
@@ -66,89 +76,100 @@ def parse_verbose_policy_info(stdout: str) -> dict:
         fgpp_match = RE_FGPP_NAME.search(line_stripped)
         if fgpp_match:
             # Save previous FGPP if exists
-            if current_fgpp and current_fgpp.get('name'):
-                verbose_data['fine_grained_policies'].append(current_fgpp)
-            current_fgpp = {'name': fgpp_match.group(1).strip()}
+            if current_fgpp and current_fgpp.get("name"):
+                verbose_data["fine_grained_policies"].append(current_fgpp)
+            current_fgpp = {"name": fgpp_match.group(1).strip()}
             continue
 
         # FGPP precedence
         if current_fgpp:
             prec_match = RE_FGPP_PRECEDENCE.search(line_stripped)
             if prec_match:
-                current_fgpp['precedence'] = int(prec_match.group(1))
+                current_fgpp["precedence"] = int(prec_match.group(1))
                 continue
 
             applies_match = RE_FGPP_APPLIES.search(line_stripped)
             if applies_match:
                 applies_to = applies_match.group(1).strip()
-                if 'applies_to' not in current_fgpp:
-                    current_fgpp['applies_to'] = []
-                current_fgpp['applies_to'].append(applies_to)
+                if "applies_to" not in current_fgpp:
+                    current_fgpp["applies_to"] = []
+                current_fgpp["applies_to"].append(applies_to)
                 continue
 
         # Domain functional level
         level_match = RE_DOMAIN_LEVEL.search(line_stripped)
-        if level_match and not verbose_data['domain_functional_level']:
-            verbose_data['domain_functional_level'] = level_match.group(1).strip()
+        if level_match and not verbose_data["domain_functional_level"]:
+            verbose_data["domain_functional_level"] = level_match.group(1).strip()
             continue
 
         mode_match = RE_DOMAIN_MODE.search(line_stripped)
-        if mode_match and not verbose_data['domain_functional_level']:
-            verbose_data['domain_functional_level'] = mode_match.group(1).strip()
+        if mode_match and not verbose_data["domain_functional_level"]:
+            verbose_data["domain_functional_level"] = mode_match.group(1).strip()
             continue
 
         # Forest functional level
         forest_match = RE_FOREST_LEVEL.search(line_stripped)
-        if forest_match and not verbose_data['forest_functional_level']:
-            verbose_data['forest_functional_level'] = forest_match.group(1).strip()
+        if forest_match and not verbose_data["forest_functional_level"]:
+            verbose_data["forest_functional_level"] = forest_match.group(1).strip()
             continue
 
         # Policy enforcement details
         enforced_match = RE_POLICY_ENFORCED.search(line_stripped)
         if enforced_match:
-            verbose_data['policy_enforcement']['enforced'] = enforced_match.group(1).strip()
+            verbose_data["policy_enforcement"]["enforced"] = enforced_match.group(1).strip()
             continue
 
         # Clear text / reversible encryption
         clear_match = RE_CLEAR_TEXT.search(line_stripped)
         if clear_match:
             value = clear_match.group(1).strip().lower()
-            verbose_data['clear_text_passwords'] = value in ('true', 'yes', 'enabled', '1')
+            verbose_data["clear_text_passwords"] = value in ("true", "yes", "enabled", "1")
             continue
 
         # Kerberos policy
         kerb_match = RE_KERBEROS_POLICY.search(line_stripped)
         if kerb_match:
-            verbose_data['kerberos_policy'] = kerb_match.group(1).strip()
+            verbose_data["kerberos_policy"] = kerb_match.group(1).strip()
             continue
 
         # Force logoff
         logoff_match = RE_FORCE_LOGOFF.search(line_stripped)
         if logoff_match:
-            verbose_data['force_logoff'] = logoff_match.group(1).strip()
+            verbose_data["force_logoff"] = logoff_match.group(1).strip()
             continue
 
         # Password properties raw value
         props_match = RE_PASSWORD_PROPERTIES.search(line_stripped)
         if props_match:
-            verbose_data['password_properties'] = props_match.group(1).strip()
+            verbose_data["password_properties"] = props_match.group(1).strip()
             continue
 
         # Domain SID
         sid_match = RE_DOMAIN_SID.search(line_stripped)
         if sid_match:
-            verbose_data['domain_sid'] = sid_match.group(1).strip()
+            verbose_data["domain_sid"] = sid_match.group(1).strip()
             continue
 
         # Capture relevant INFO messages
-        if RE_INFO_LINE.search(line_stripped) or '[INFO]' in line_stripped.upper():
-            if any(kw in line_stripped.lower() for kw in
-                   ['policy', 'password', 'lockout', 'domain', 'level', 'functional', 'fgpp', 'pso']):
-                verbose_data['info_messages'].append(line_stripped)
+        if RE_INFO_LINE.search(line_stripped) or "[INFO]" in line_stripped.upper():
+            if any(
+                kw in line_stripped.lower()
+                for kw in [
+                    "policy",
+                    "password",
+                    "lockout",
+                    "domain",
+                    "level",
+                    "functional",
+                    "fgpp",
+                    "pso",
+                ]
+            ):
+                verbose_data["info_messages"].append(line_stripped)
 
     # Save last FGPP if exists
-    if current_fgpp and current_fgpp.get('name'):
-        verbose_data['fine_grained_policies'].append(current_fgpp)
+    if current_fgpp and current_fgpp.get("name"):
+        verbose_data["fine_grained_policies"].append(current_fgpp)
 
     return verbose_data
 
@@ -172,46 +193,48 @@ def enum_policies(args, cache):
     output("Domain password information:")
 
     policies = {
-        'Minimum password length': None,
-        'Password history length': None,
-        'Maximum password age': None,
-        'Minimum password age': None,
-        'Lockout threshold': None,
-        'Lockout duration': None,
-        'Lockout observation window': None,
-        'Password Complexity': None,
+        "Minimum password length": None,
+        "Password history length": None,
+        "Maximum password age": None,
+        "Minimum password age": None,
+        "Lockout threshold": None,
+        "Lockout duration": None,
+        "Lockout observation window": None,
+        "Password Complexity": None,
     }
 
     field_aliases = {
-        'account lockout threshold': 'Lockout threshold',
-        'locked account duration': 'Lockout duration',
-        'reset account lockout counter': 'Lockout observation window',
-        'password complexity flags': 'Password Complexity',
+        "account lockout threshold": "Lockout threshold",
+        "locked account duration": "Lockout duration",
+        "reset account lockout counter": "Lockout observation window",
+        "password complexity flags": "Password Complexity",
     }
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         line_lower = line.lower()
-        if ':' not in line:
+        if ":" not in line:
             continue
         for alias, key in field_aliases.items():
             if alias in line_lower:
-                value = line.split(':', 1)[1].strip()
+                value = line.split(":", 1)[1].strip()
                 policies[key] = value
                 break
         else:
             for key in policies:
                 if key.lower() in line_lower:
-                    value = line.split(':', 1)[1].strip()
+                    value = line.split(":", 1)[1].strip()
                     policies[key] = value
                     break
 
     output(f"  Password history length: {policies.get('Password history length') or 'Unknown'}")
 
-    min_len = policies.get('Minimum password length') or 'Unknown'
+    min_len = policies.get("Minimum password length") or "Unknown"
     try:
         min_len_int = int(min_len)
         if min_len_int < 8:
-            output(f"  Minimum password length: {c(min_len, Colors.YELLOW)} {c('← Weak!', Colors.YELLOW)}")
+            output(
+                f"  Minimum password length: {c(min_len, Colors.YELLOW)} {c('← Weak!', Colors.YELLOW)}"
+            )
         else:
             output(f"  Minimum password length: {c(min_len, Colors.GREEN)}")
     except ValueError:
@@ -220,24 +243,28 @@ def enum_policies(args, cache):
     output(f"  Minimum password age: {policies.get('Minimum password age') or 'Unknown'}")
     output(f"  Maximum password age: {policies.get('Maximum password age') or 'Unknown'}")
     output("  Password properties:")
-    complexity = policies.get('Password Complexity')
+    complexity = policies.get("Password Complexity")
     output(f"  - DOMAIN_PASSWORD_COMPLEX: {complexity.lower() if complexity else 'unknown'}")
 
     output("Domain lockout information:")
-    output(f"  Lockout observation window: {policies.get('Lockout observation window') or 'Unknown'}")
+    output(
+        f"  Lockout observation window: {policies.get('Lockout observation window') or 'Unknown'}"
+    )
     output(f"  Lockout duration: {policies.get('Lockout duration') or 'Unknown'}")
 
-    lockout = policies.get('Lockout threshold') or 'None'
-    if lockout == 'None' or lockout == '0' or not lockout:
-        output(f"  Lockout threshold: {c('None', Colors.YELLOW)} {c('← Password spraying safe!', Colors.YELLOW)}")
+    lockout = policies.get("Lockout threshold") or "None"
+    if lockout == "None" or lockout == "0" or not lockout:
+        output(
+            f"  Lockout threshold: {c('None', Colors.YELLOW)} {c('← Password spraying safe!', Colors.YELLOW)}"
+        )
 
         # Add password spraying recommendation
-        domain = cache.domain_info.get('dns_domain', '<domain>')
+        domain = cache.domain_info.get("dns_domain", "<domain>")
         cache.add_next_step(
             finding="No account lockout policy",
             command=f"nxc smb {args.target} -u users.txt -p passwords.txt --continue-on-success",
             description="Password spraying is safe - no lockout threshold configured",
-            priority="medium"
+            priority="medium",
         )
     else:
         output(f"  Lockout threshold: {c(lockout, Colors.GREEN)}")
@@ -253,61 +280,63 @@ def enum_policies(args, cache):
     cache.policy_verbose_info = verbose_info
 
     # Store domain SID if found
-    if verbose_info.get('domain_sid') and not cache.domain_info.get('domain_sid'):
-        cache.domain_info['domain_sid'] = verbose_info['domain_sid']
+    if verbose_info.get("domain_sid") and not cache.domain_info.get("domain_sid"):
+        cache.domain_info["domain_sid"] = verbose_info["domain_sid"]
 
     # Store domain functional level if found
-    if verbose_info.get('domain_functional_level') and not cache.domain_info.get('functional_level'):
-        cache.domain_info['functional_level'] = verbose_info['domain_functional_level']
+    if verbose_info.get("domain_functional_level") and not cache.domain_info.get(
+        "functional_level"
+    ):
+        cache.domain_info["functional_level"] = verbose_info["domain_functional_level"]
 
     # Add next steps for security findings from verbose data
-    if verbose_info.get('clear_text_passwords'):
+    if verbose_info.get("clear_text_passwords"):
         cache.add_next_step(
             finding="Reversible encryption enabled",
             command=f"nxc ldap {args.target} -u <user> -p <pass> --asreproast output.txt",
             description="Clear text passwords may be stored - check for AS-REP roastable accounts",
-            priority="high"
+            priority="high",
         )
 
-    if verbose_info.get('fine_grained_policies'):
-        for fgpp in verbose_info['fine_grained_policies']:
-            if fgpp.get('applies_to'):
+    if verbose_info.get("fine_grained_policies"):
+        for fgpp in verbose_info["fine_grained_policies"]:
+            if fgpp.get("applies_to"):
                 cache.add_next_step(
                     finding=f"Fine-grained password policy: {fgpp.get('name', 'Unknown')}",
                     command=f"nxc ldap {args.target} -u <user> -p <pass> -M get-desc-users",
                     description=f"FGPP applies to: {', '.join(fgpp.get('applies_to', []))}",
-                    priority="low"
+                    priority="low",
                 )
 
     if args.json_output:
-        JSON_DATA['policies'] = policies
+        JSON_DATA["policies"] = policies
         # Add verbose data to JSON output
-        if verbose_info['fine_grained_policies']:
-            JSON_DATA['fine_grained_policies'] = verbose_info['fine_grained_policies']
-        if verbose_info['domain_functional_level']:
-            JSON_DATA['domain_functional_level'] = verbose_info['domain_functional_level']
-        if verbose_info['forest_functional_level']:
-            JSON_DATA['forest_functional_level'] = verbose_info['forest_functional_level']
-        if verbose_info['domain_sid']:
-            JSON_DATA['domain_sid'] = verbose_info['domain_sid']
-        if verbose_info['clear_text_passwords'] is not None:
-            JSON_DATA['clear_text_passwords'] = verbose_info['clear_text_passwords']
-        if verbose_info['kerberos_policy']:
-            JSON_DATA['kerberos_policy'] = verbose_info['kerberos_policy']
-        if verbose_info['policy_enforcement']:
-            JSON_DATA['policy_enforcement'] = verbose_info['policy_enforcement']
+        if verbose_info["fine_grained_policies"]:
+            JSON_DATA["fine_grained_policies"] = verbose_info["fine_grained_policies"]
+        if verbose_info["domain_functional_level"]:
+            JSON_DATA["domain_functional_level"] = verbose_info["domain_functional_level"]
+        if verbose_info["forest_functional_level"]:
+            JSON_DATA["forest_functional_level"] = verbose_info["forest_functional_level"]
+        if verbose_info["domain_sid"]:
+            JSON_DATA["domain_sid"] = verbose_info["domain_sid"]
+        if verbose_info["clear_text_passwords"] is not None:
+            JSON_DATA["clear_text_passwords"] = verbose_info["clear_text_passwords"]
+        if verbose_info["kerberos_policy"]:
+            JSON_DATA["kerberos_policy"] = verbose_info["kerberos_policy"]
+        if verbose_info["policy_enforcement"]:
+            JSON_DATA["policy_enforcement"] = verbose_info["policy_enforcement"]
 
 
 def _print_verbose_policy_info(verbose_info: dict, cache):
     """Print verbose policy information if available."""
     has_verbose_data = (
-        verbose_info.get('fine_grained_policies') or
-        verbose_info.get('domain_functional_level') or
-        verbose_info.get('forest_functional_level') or
-        verbose_info.get('domain_sid') or
-        verbose_info.get('clear_text_passwords') is not None or
-        verbose_info.get('kerberos_policy') or
-        verbose_info.get('force_logoff')
+        verbose_info.get("fine_grained_policies")
+        or verbose_info.get("domain_functional_level")
+        or verbose_info.get("forest_functional_level")
+        or verbose_info.get("domain_sid")
+        or verbose_info.get("clear_text_passwords") is not None
+        or verbose_info.get("kerberos_policy")
+        or verbose_info.get("force_logoff")
     )
 
     if not has_verbose_data:
@@ -317,56 +346,58 @@ def _print_verbose_policy_info(verbose_info: dict, cache):
     output(c("Extended Policy Information (from verbose output):", Colors.CYAN))
 
     # Domain functional level
-    if verbose_info.get('domain_functional_level'):
-        level = verbose_info['domain_functional_level']
+    if verbose_info.get("domain_functional_level"):
+        level = verbose_info["domain_functional_level"]
         # Highlight old functional levels as potential security concern
-        old_levels = ['2003', '2008', '2008 R2', '2000']
+        old_levels = ["2003", "2008", "2008 R2", "2000"]
         if any(old in level for old in old_levels):
             output(f"  Domain Functional Level: {c(level, Colors.YELLOW)}")
         else:
             output(f"  Domain Functional Level: {level}")
 
-    if verbose_info.get('forest_functional_level'):
+    if verbose_info.get("forest_functional_level"):
         output(f"  Forest Functional Level: {verbose_info['forest_functional_level']}")
 
     # Domain SID
-    if verbose_info.get('domain_sid'):
+    if verbose_info.get("domain_sid"):
         output(f"  Domain SID: {verbose_info['domain_sid']}")
 
     # Clear text passwords (security concern)
-    if verbose_info.get('clear_text_passwords'):
-        output(f"  Reversible Encryption: {c('ENABLED', Colors.RED)} {c('← Security Risk!', Colors.RED)}")
-    elif verbose_info.get('clear_text_passwords') is False:
+    if verbose_info.get("clear_text_passwords"):
+        output(
+            f"  Reversible Encryption: {c('ENABLED', Colors.RED)} {c('← Security Risk!', Colors.RED)}"
+        )
+    elif verbose_info.get("clear_text_passwords") is False:
         output(f"  Reversible Encryption: {c('Disabled', Colors.GREEN)}")
 
     # Kerberos policy
-    if verbose_info.get('kerberos_policy'):
+    if verbose_info.get("kerberos_policy"):
         output(f"  Kerberos Policy: {verbose_info['kerberos_policy']}")
 
     # Force logoff
-    if verbose_info.get('force_logoff'):
+    if verbose_info.get("force_logoff"):
         output(f"  Force Logoff: {verbose_info['force_logoff']}")
 
     # Fine-grained password policies
-    if verbose_info.get('fine_grained_policies'):
+    if verbose_info.get("fine_grained_policies"):
         output("")
         output(c("Fine-Grained Password Policies (FGPP):", Colors.CYAN))
-        for fgpp in verbose_info['fine_grained_policies']:
-            name = fgpp.get('name', 'Unknown')
-            precedence = fgpp.get('precedence', 'N/A')
+        for fgpp in verbose_info["fine_grained_policies"]:
+            name = fgpp.get("name", "Unknown")
+            precedence = fgpp.get("precedence", "N/A")
             output(f"  Policy: {c(name, Colors.BOLD)}")
             output(f"    Precedence: {precedence}")
-            if fgpp.get('applies_to'):
-                for target in fgpp['applies_to']:
+            if fgpp.get("applies_to"):
+                for target in fgpp["applies_to"]:
                     output(f"    Applies to: {target}")
 
     # Display relevant INFO messages if any
-    if verbose_info.get('info_messages'):
+    if verbose_info.get("info_messages"):
         # Filter to unique, relevant messages
         seen = set()
         unique_msgs = []
-        for msg in verbose_info['info_messages']:
-            clean_msg = msg.replace('[INFO]', '').strip()
+        for msg in verbose_info["info_messages"]:
+            clean_msg = msg.replace("[INFO]", "").strip()
             if clean_msg and clean_msg not in seen:
                 seen.add(clean_msg)
                 unique_msgs.append(clean_msg)

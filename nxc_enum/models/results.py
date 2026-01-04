@@ -3,6 +3,7 @@
 
 class MultiUserResults:
     """Store results from per-user commands for multi-credential mode."""
+
     def __init__(self):
         # Share access matrix: {share_name: {user: permission}}
         self.shares: dict[str, dict[str, str]] = {}

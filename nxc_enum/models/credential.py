@@ -6,6 +6,7 @@ from typing import Optional
 
 class CredentialError(ValueError):
     """Raised when credential configuration is invalid."""
+
     pass
 
 
@@ -21,6 +22,7 @@ class Credential:
         valid: Whether credential has been validated successfully
         is_admin: True if user has local admin privileges on target
     """
+
     user: str
     password: Optional[str] = None
     hash: Optional[str] = None
@@ -73,10 +75,10 @@ class Credential:
             'password', 'hash', or 'none'
         """
         if self.password is not None:
-            return 'password'
+            return "password"
         elif self.hash:
-            return 'hash'
-        return 'none'
+            return "hash"
+        return "none"
 
     def __repr__(self) -> str:
         """Return a safe string representation that redacts sensitive fields.
@@ -84,8 +86,8 @@ class Credential:
         Security: Password and hash values are always redacted to prevent
         accidental exposure in logs, debug output, or error messages.
         """
-        pwd_display = '****REDACTED****' if self.password is not None else 'None'
-        hash_display = '****REDACTED****' if self.hash else 'None'
+        pwd_display = "****REDACTED****" if self.password is not None else "None"
+        hash_display = "****REDACTED****" if self.hash else "None"
         return (
             f"Credential(user={self.user!r}, password={pwd_display}, "
             f"hash={hash_display}, domain={self.domain!r}, "

@@ -1,7 +1,7 @@
 """Share access matrix printing."""
 
-from ..core.output import output, status, JSON_DATA
 from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, output, status
 
 
 def print_share_matrix(results, creds, args):
@@ -42,23 +42,34 @@ def print_share_matrix(results, creds, args):
         output(row)
 
     output("")
-    output("Legend: " + c("WRITE", Colors.GREEN) + " | " + c("READ", Colors.YELLOW) + " | - = No Access")
+    output(
+        "Legend: "
+        + c("WRITE", Colors.GREEN)
+        + " | "
+        + c("READ", Colors.YELLOW)
+        + " | - = No Access"
+    )
 
     # Find interesting shares
     interesting_shares = []
     for share in shares:
-        if share not in ('IPC$', 'NETLOGON', 'SYSVOL', 'ADMIN$', 'C$'):
-            users_with_access = [u for u, p in results.shares[share].items() if p != '-' and p != 'NO ACCESS']
+        if share not in ("IPC$", "NETLOGON", "SYSVOL", "ADMIN$", "C$"):
+            users_with_access = [
+                u for u, p in results.shares[share].items() if p != "-" and p != "NO ACCESS"
+            ]
             if users_with_access:
                 interesting_shares.append((share, users_with_access))
 
     if interesting_shares:
         output("")
         for share, users_with_access in interesting_shares:
-            status(f"Non-default share '{share}' accessible by: {', '.join(users_with_access)}", "warning")
+            status(
+                f"Non-default share '{share}' accessible by: {', '.join(users_with_access)}",
+                "warning",
+            )
 
     if args.json_output:
-        JSON_DATA['shares_matrix'] = {
-            share: {user: results.shares[share].get(user, 'NO ACCESS') for user in users}
+        JSON_DATA["shares_matrix"] = {
+            share: {user: results.shares[share].get(user, "NO ACCESS") for user in users}
             for share in shares
         }

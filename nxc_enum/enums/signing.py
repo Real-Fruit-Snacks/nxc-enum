@@ -2,55 +2,56 @@
 
 import re
 
-from ..core.runner import run_nxc
-from ..core.output import output, status, print_section, debug_nxc, JSON_DATA
 from ..core.colors import Colors, c
 from ..core.constants import RE_HOSTNAME
+from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
-
 
 # Regex patterns for parsing verbose SMB signing output
 # Matches signing status in parentheses: (signing:True) or (signing:False)
-RE_SIGNING_STATUS = re.compile(r'\(signing:(\w+)\)', re.IGNORECASE)
+RE_SIGNING_STATUS = re.compile(r"\(signing:(\w+)\)", re.IGNORECASE)
 
 # Matches SMB dialect/version info from verbose output
 # Note: Must not match IP addresses - SMB versions are 1, 2, 2.1, 3, 3.0, 3.0.2, 3.1.1
-RE_SMB_DIALECT = re.compile(r'(?:SMB|dialect)[:\s]+([123](?:\.[01](?:\.[012])?)?)\b', re.IGNORECASE)
-RE_NEGOTIATED_DIALECT = re.compile(r'(?:negotiated|selected|using)\s+(?:dialect\s+)?(?:SMB\s*)?([123](?:\.[01](?:\.[012])?)?)\b', re.IGNORECASE)
+RE_SMB_DIALECT = re.compile(r"(?:SMB|dialect)[:\s]+([123](?:\.[01](?:\.[012])?)?)\b", re.IGNORECASE)
+RE_NEGOTIATED_DIALECT = re.compile(
+    r"(?:negotiated|selected|using)\s+(?:dialect\s+)?(?:SMB\s*)?([123](?:\.[01](?:\.[012])?)?)\b",
+    re.IGNORECASE,
+)
 
 # Matches SMBv1 status
-RE_SMBV1 = re.compile(r'\(SMBv1:(\w+)\)', re.IGNORECASE)
+RE_SMBV1 = re.compile(r"\(SMBv1:(\w+)\)", re.IGNORECASE)
 
 # Matches host/IP patterns from verbose output
-RE_HOST_IP = re.compile(r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})')
-RE_HOST_FQDN = re.compile(r'(?:host|target|server)[:\s]+(\S+)', re.IGNORECASE)
+RE_HOST_IP = re.compile(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})")
+RE_HOST_FQDN = re.compile(r"(?:host|target|server)[:\s]+(\S+)", re.IGNORECASE)
 
 # Matches signing negotiation details from INFO lines
 # Format: INFO ... Signing: <status> ... or Message signing: <enabled/disabled>
 RE_INFO_SIGNING = re.compile(
-    r'(?:INFO|DEBUG|\[\*\]).*?(?:signing|message.?signing)[:\s]+(\w+)',
-    re.IGNORECASE
+    r"(?:INFO|DEBUG|\[\*\]).*?(?:signing|message.?signing)[:\s]+(\w+)", re.IGNORECASE
 )
 
 # Matches security mode from verbose output
 # Format: "Security mode: ..." or "secmode: ..."
-RE_SECURITY_MODE = re.compile(r'(?:security.?mode|secmode)[:\s]+(.+?)(?:\s|$)', re.IGNORECASE)
+RE_SECURITY_MODE = re.compile(r"(?:security.?mode|secmode)[:\s]+(.+?)(?:\s|$)", re.IGNORECASE)
 
 # Matches SMB capabilities from verbose output
-RE_CAPABILITIES = re.compile(r'(?:capabilities|caps)[:\s]+(.+)', re.IGNORECASE)
+RE_CAPABILITIES = re.compile(r"(?:capabilities|caps)[:\s]+(.+)", re.IGNORECASE)
 
 # Matches encryption support from verbose output
-RE_ENCRYPTION = re.compile(r'(?:encryption)[:\s]+(\w+)', re.IGNORECASE)
+RE_ENCRYPTION = re.compile(r"(?:encryption)[:\s]+(\w+)", re.IGNORECASE)
 
 # Matches connection-specific signing info (per-host status in verbose mode)
 # Format: "IP ... signing <status>" or "hostname signing: <status>"
 RE_HOST_SIGNING = re.compile(
-    r'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\S+?\.(?:local|domain|corp|net|com)\S*)\s+.*?signing[:\s]*(\w+)',
-    re.IGNORECASE
+    r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\S+?\.(?:local|domain|corp|net|com)\S*)\s+.*?signing[:\s]*(\w+)",
+    re.IGNORECASE,
 )
 
 # Matches relay list generation messages
-RE_RELAY_LIST = re.compile(r'(?:relay|gen-relay|relayable)[:\s]+(.+)', re.IGNORECASE)
+RE_RELAY_LIST = re.compile(r"(?:relay|gen-relay|relayable)[:\s]+(.+)", re.IGNORECASE)
 
 
 def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
@@ -66,16 +67,16 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
     Returns dict with parsed verbose signing data.
     """
     verbose_data = {
-        'hosts': {},           # Per-host signing info: {host: {signing: bool, dialect: str, ...}}
-        'dialect': None,       # Global/first-seen dialect
-        'smbv1_enabled': None, # SMBv1 status if detected
-        'security_mode': None, # Security mode string
-        'capabilities': [],    # List of detected capabilities
-        'encryption_supported': None,
-        'info_messages': [],   # Relevant INFO/verbose messages
-        'errors': [],          # Error messages
-        'hosts_signing_required': [],    # Hosts with signing required
-        'hosts_signing_not_required': [] # Hosts with signing not required (relayable)
+        "hosts": {},  # Per-host signing info: {host: {signing: bool, dialect: str, ...}}
+        "dialect": None,  # Global/first-seen dialect
+        "smbv1_enabled": None,  # SMBv1 status if detected
+        "security_mode": None,  # Security mode string
+        "capabilities": [],  # List of detected capabilities
+        "encryption_supported": None,
+        "info_messages": [],  # Relevant INFO/verbose messages
+        "errors": [],  # Error messages
+        "hosts_signing_required": [],  # Hosts with signing required
+        "hosts_signing_not_required": [],  # Hosts with signing not required (relayable)
     }
 
     # Track IP to hostname mappings to avoid duplicates
@@ -95,20 +96,20 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
                 return ip_to_hostname[ip_addr]
 
             # Check if IP was already added as a host entry - need to consolidate
-            if ip_addr in verbose_data['hosts'] and hostname not in verbose_data['hosts']:
+            if ip_addr in verbose_data["hosts"] and hostname not in verbose_data["hosts"]:
                 # Move the IP entry to the hostname entry
-                verbose_data['hosts'][hostname] = verbose_data['hosts'].pop(ip_addr)
-                verbose_data['hosts'][hostname]['ip'] = ip_addr
+                verbose_data["hosts"][hostname] = verbose_data["hosts"].pop(ip_addr)
+                verbose_data["hosts"][hostname]["ip"] = ip_addr
 
                 # Update the signing lists
-                if ip_addr in verbose_data['hosts_signing_required']:
-                    verbose_data['hosts_signing_required'].remove(ip_addr)
-                    if hostname not in verbose_data['hosts_signing_required']:
-                        verbose_data['hosts_signing_required'].append(hostname)
-                if ip_addr in verbose_data['hosts_signing_not_required']:
-                    verbose_data['hosts_signing_not_required'].remove(ip_addr)
-                    if hostname not in verbose_data['hosts_signing_not_required']:
-                        verbose_data['hosts_signing_not_required'].append(hostname)
+                if ip_addr in verbose_data["hosts_signing_required"]:
+                    verbose_data["hosts_signing_required"].remove(ip_addr)
+                    if hostname not in verbose_data["hosts_signing_required"]:
+                        verbose_data["hosts_signing_required"].append(hostname)
+                if ip_addr in verbose_data["hosts_signing_not_required"]:
+                    verbose_data["hosts_signing_not_required"].remove(ip_addr)
+                    if hostname not in verbose_data["hosts_signing_not_required"]:
+                        verbose_data["hosts_signing_not_required"].append(hostname)
 
             # Record the mapping
             ip_to_hostname[ip_addr] = hostname
@@ -129,7 +130,7 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
     # Combine stdout and stderr (some verbose info may go to stderr)
     combined_output = stdout + "\n" + stderr
 
-    for line in combined_output.split('\n'):
+    for line in combined_output.split("\n"):
         line_stripped = line.strip()
         if not line_stripped:
             continue
@@ -138,7 +139,7 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
         signing_match = RE_SIGNING_STATUS.search(line_stripped)
         if signing_match:
             signing_value = signing_match.group(1).lower()
-            signing_required = signing_value == 'true'
+            signing_required = signing_value == "true"
 
             # Extract host from this line - prefer hostname over IP to avoid duplicates
             hostname = None
@@ -155,84 +156,96 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
             primary_host = get_canonical_host(ip_addr, hostname)
 
             if primary_host:
-                if primary_host not in verbose_data['hosts']:
-                    verbose_data['hosts'][primary_host] = {}
-                verbose_data['hosts'][primary_host]['signing_required'] = signing_required
+                if primary_host not in verbose_data["hosts"]:
+                    verbose_data["hosts"][primary_host] = {}
+                verbose_data["hosts"][primary_host]["signing_required"] = signing_required
                 # Store IP if we have it
                 if ip_addr:
-                    verbose_data['hosts'][primary_host]['ip'] = ip_addr
+                    verbose_data["hosts"][primary_host]["ip"] = ip_addr
 
                 # Categorize hosts
                 if signing_required:
-                    if primary_host not in verbose_data['hosts_signing_required']:
-                        verbose_data['hosts_signing_required'].append(primary_host)
+                    if primary_host not in verbose_data["hosts_signing_required"]:
+                        verbose_data["hosts_signing_required"].append(primary_host)
                 else:
-                    if primary_host not in verbose_data['hosts_signing_not_required']:
-                        verbose_data['hosts_signing_not_required'].append(primary_host)
+                    if primary_host not in verbose_data["hosts_signing_not_required"]:
+                        verbose_data["hosts_signing_not_required"].append(primary_host)
 
         # Parse SMBv1 status
         smbv1_match = RE_SMBV1.search(line_stripped)
         if smbv1_match:
             smbv1_value = smbv1_match.group(1).lower()
-            verbose_data['smbv1_enabled'] = smbv1_value == 'true'
+            verbose_data["smbv1_enabled"] = smbv1_value == "true"
 
             # Associate with host if possible
             host = None
             hostname_match = RE_HOSTNAME.search(line_stripped)
             if hostname_match:
                 host = hostname_match.group(1)
-            if host and host in verbose_data['hosts']:
-                verbose_data['hosts'][host]['smbv1'] = verbose_data['smbv1_enabled']
+            if host and host in verbose_data["hosts"]:
+                verbose_data["hosts"][host]["smbv1"] = verbose_data["smbv1_enabled"]
 
         # Parse negotiated dialect
         dialect_match = RE_NEGOTIATED_DIALECT.search(line_stripped)
         if dialect_match:
             dialect = dialect_match.group(1)
-            if not verbose_data['dialect']:
-                verbose_data['dialect'] = normalize_smb_dialect(dialect)
+            if not verbose_data["dialect"]:
+                verbose_data["dialect"] = normalize_smb_dialect(dialect)
 
             # Associate with host if detectable
             host = None
             hostname_match = RE_HOSTNAME.search(line_stripped)
             if hostname_match:
                 host = hostname_match.group(1)
-            if host and host in verbose_data['hosts']:
-                verbose_data['hosts'][host]['dialect'] = normalize_smb_dialect(dialect)
-        elif not verbose_data['dialect']:
+            if host and host in verbose_data["hosts"]:
+                verbose_data["hosts"][host]["dialect"] = normalize_smb_dialect(dialect)
+        elif not verbose_data["dialect"]:
             # Alternative dialect detection
             alt_dialect_match = RE_SMB_DIALECT.search(line_stripped)
             if alt_dialect_match:
                 dialect = alt_dialect_match.group(1)
-                if dialect not in ('1', '445'):  # Filter port numbers
-                    verbose_data['dialect'] = normalize_smb_dialect(dialect)
+                if dialect not in ("1", "445"):  # Filter port numbers
+                    verbose_data["dialect"] = normalize_smb_dialect(dialect)
 
         # Parse security mode
         secmode_match = RE_SECURITY_MODE.search(line_stripped)
-        if secmode_match and not verbose_data['security_mode']:
-            verbose_data['security_mode'] = secmode_match.group(1).strip()
+        if secmode_match and not verbose_data["security_mode"]:
+            verbose_data["security_mode"] = secmode_match.group(1).strip()
 
         # Parse capabilities
         caps_match = RE_CAPABILITIES.search(line_stripped)
         if caps_match:
             caps_str = caps_match.group(1)
-            caps = [cap.strip() for cap in re.split(r'[,\s|]+', caps_str) if cap.strip()]
+            caps = [cap.strip() for cap in re.split(r"[,\s|]+", caps_str) if cap.strip()]
             for cap in caps:
-                if cap not in verbose_data['capabilities']:
-                    verbose_data['capabilities'].append(cap)
+                if cap not in verbose_data["capabilities"]:
+                    verbose_data["capabilities"].append(cap)
 
         # Parse encryption support
         enc_match = RE_ENCRYPTION.search(line_stripped)
         if enc_match:
             enc_value = enc_match.group(1).lower()
-            verbose_data['encryption_supported'] = enc_value in ('true', 'yes', 'enabled', 'supported', '1')
+            verbose_data["encryption_supported"] = enc_value in (
+                "true",
+                "yes",
+                "enabled",
+                "supported",
+                "1",
+            )
 
         # Parse INFO lines for signing negotiation details
-        if 'INFO' in line_stripped.upper() or '[*]' in line_stripped:
+        if "INFO" in line_stripped.upper() or "[*]" in line_stripped:
             # Skip generic nxc verbose lines (connection noise, not signing data)
             noise_keywords = [
-                'Socket info:', 'Creating SMB', 'Resolved domain',
-                'kerberos=', 'ipv6=', 'link-local', 'kdcHost:',
-                'hostname=', 'host='
+                "Socket info:",
+                "Creating SMB",
+                "Resolved domain",
+                "kerberos=",
+                "ipv6=",
+                "link-local",
+                "kdcHost:",
+                "hostname=",
+                "host=",
             ]
             if any(kw in line_stripped for kw in noise_keywords):
                 continue
@@ -241,17 +254,17 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
             if info_signing_match:
                 msg = line_stripped
                 # Clean up the message
-                for marker in ['[*]', '[+]', '[-]', 'INFO', 'DEBUG']:
-                    msg = msg.replace(marker, '').strip()
-                if msg and msg not in verbose_data['info_messages']:
-                    verbose_data['info_messages'].append(msg)
+                for marker in ["[*]", "[+]", "[-]", "INFO", "DEBUG"]:
+                    msg = msg.replace(marker, "").strip()
+                if msg and msg not in verbose_data["info_messages"]:
+                    verbose_data["info_messages"].append(msg)
 
             # Capture host-specific signing details from INFO lines
             host_signing_match = RE_HOST_SIGNING.search(line_stripped)
             if host_signing_match:
                 matched_host = host_signing_match.group(1)
                 sign_status = host_signing_match.group(2).lower()
-                signing_req = sign_status in ('true', 'required', 'enabled', 'yes')
+                signing_req = sign_status in ("true", "required", "enabled", "yes")
 
                 # Also try to extract both IP and hostname from the full line
                 # to properly consolidate duplicates
@@ -274,28 +287,28 @@ def parse_verbose_signing_info(stdout: str, stderr: str) -> dict:
                     primary_host = matched_host
 
                 if primary_host:
-                    if primary_host not in verbose_data['hosts']:
-                        verbose_data['hosts'][primary_host] = {}
-                    verbose_data['hosts'][primary_host]['signing_required'] = signing_req
+                    if primary_host not in verbose_data["hosts"]:
+                        verbose_data["hosts"][primary_host] = {}
+                    verbose_data["hosts"][primary_host]["signing_required"] = signing_req
                     if ip_addr:
-                        verbose_data['hosts'][primary_host]['ip'] = ip_addr
+                        verbose_data["hosts"][primary_host]["ip"] = ip_addr
 
                     if signing_req:
-                        if primary_host not in verbose_data['hosts_signing_required']:
-                            verbose_data['hosts_signing_required'].append(primary_host)
+                        if primary_host not in verbose_data["hosts_signing_required"]:
+                            verbose_data["hosts_signing_required"].append(primary_host)
                     else:
-                        if primary_host not in verbose_data['hosts_signing_not_required']:
-                            verbose_data['hosts_signing_not_required'].append(primary_host)
+                        if primary_host not in verbose_data["hosts_signing_not_required"]:
+                            verbose_data["hosts_signing_not_required"].append(primary_host)
 
         # Parse error messages
-        if '[-]' in line_stripped or 'ERROR' in line_stripped.upper():
+        if "[-]" in line_stripped or "ERROR" in line_stripped.upper():
             # Skip noise but capture meaningful errors
             if not is_nxc_noise_line(line_stripped):
                 msg = line_stripped
-                for marker in ['[-]', 'ERROR']:
-                    msg = msg.replace(marker, '').strip()
-                if msg and 'timeout' not in msg.lower() and msg not in verbose_data['errors']:
-                    verbose_data['errors'].append(msg)
+                for marker in ["[-]", "ERROR"]:
+                    msg = msg.replace(marker, "").strip()
+                if msg and "timeout" not in msg.lower() and msg not in verbose_data["errors"]:
+                    verbose_data["errors"].append(msg)
 
     return verbose_data
 
@@ -314,37 +327,39 @@ def normalize_smb_dialect(dialect: str) -> str:
 
     # Handle numeric-only formats
     if dialect.isdigit():
-        if dialect == '2':
-            return '2.0'
-        elif dialect == '3':
-            return '3.0'
-        elif dialect == '21':
-            return '2.1'
-        elif dialect == '30':
-            return '3.0'
-        elif dialect == '302':
-            return '3.0.2'
-        elif dialect == '311':
-            return '3.1.1'
+        if dialect == "2":
+            return "2.0"
+        elif dialect == "3":
+            return "3.0"
+        elif dialect == "21":
+            return "2.1"
+        elif dialect == "30":
+            return "3.0"
+        elif dialect == "302":
+            return "3.0.2"
+        elif dialect == "311":
+            return "3.1.1"
 
     # Handle simple numeric strings
-    if dialect == '2':
-        return '2.0'
-    elif dialect == '3':
-        return '3.0'
+    if dialect == "2":
+        return "2.0"
+    elif dialect == "3":
+        return "3.0"
 
     return dialect
 
 
 def _display_verbose_signing_info(verbose_data: dict, args):
     """Display additional signing information from verbose output."""
-    has_verbose = any([
-        verbose_data.get('dialect'),
-        verbose_data.get('security_mode'),
-        verbose_data.get('capabilities'),
-        verbose_data.get('smbv1_enabled') is not None,
-        verbose_data.get('encryption_supported') is not None
-    ])
+    has_verbose = any(
+        [
+            verbose_data.get("dialect"),
+            verbose_data.get("security_mode"),
+            verbose_data.get("capabilities"),
+            verbose_data.get("smbv1_enabled") is not None,
+            verbose_data.get("encryption_supported") is not None,
+        ]
+    )
 
     if not has_verbose:
         return
@@ -353,35 +368,35 @@ def _display_verbose_signing_info(verbose_data: dict, args):
     output(c("SMB Signing Details:", Colors.CYAN))
 
     # Display dialect if detected
-    if verbose_data.get('dialect'):
-        dialect = verbose_data['dialect']
-        dialect_color = Colors.GREEN if dialect in ('3.0.2', '3.1.1') else Colors.YELLOW
+    if verbose_data.get("dialect"):
+        dialect = verbose_data["dialect"]
+        dialect_color = Colors.GREEN if dialect in ("3.0.2", "3.1.1") else Colors.YELLOW
         output(f"  Dialect: {c(f'SMB {dialect}', dialect_color)}")
 
     # Display SMBv1 status
-    if verbose_data.get('smbv1_enabled') is not None:
-        smbv1 = verbose_data['smbv1_enabled']
+    if verbose_data.get("smbv1_enabled") is not None:
+        smbv1 = verbose_data["smbv1_enabled"]
         output(f"  SMBv1: {c('enabled', Colors.RED) if smbv1 else c('disabled', Colors.GREEN)}")
 
     # Display security mode
-    if verbose_data.get('security_mode'):
+    if verbose_data.get("security_mode"):
         output(f"  Security Mode: {verbose_data['security_mode']}")
 
     # Display encryption support
-    if verbose_data.get('encryption_supported') is not None:
-        enc = verbose_data['encryption_supported']
-        enc_status = 'supported' if enc else 'not supported'
+    if verbose_data.get("encryption_supported") is not None:
+        enc = verbose_data["encryption_supported"]
+        enc_status = "supported" if enc else "not supported"
         enc_color = Colors.GREEN if enc else Colors.YELLOW
         output(f"  Encryption: {c(enc_status, enc_color)}")
 
     # Display capabilities
-    if verbose_data.get('capabilities'):
+    if verbose_data.get("capabilities"):
         output(f"  Capabilities: {', '.join(sorted(verbose_data['capabilities']))}")
 
 
 def _display_per_host_info(verbose_data: dict):
     """Display per-host signing information from verbose output."""
-    hosts_info = verbose_data.get('hosts', {})
+    hosts_info = verbose_data.get("hosts", {})
     if not hosts_info or len(hosts_info) <= 1:
         return
 
@@ -389,9 +404,9 @@ def _display_per_host_info(verbose_data: dict):
     output(c("Per-Host Signing Status:", Colors.CYAN))
 
     for host, info in sorted(hosts_info.items()):
-        signing_req = info.get('signing_required')
-        dialect = info.get('dialect')
-        smbv1 = info.get('smbv1')
+        signing_req = info.get("signing_required")
+        dialect = info.get("dialect")
+        smbv1 = info.get("smbv1")
 
         if signing_req is None:
             continue
@@ -400,15 +415,15 @@ def _display_per_host_info(verbose_data: dict):
         status_parts = []
 
         if signing_req:
-            status_parts.append(c('signing required', Colors.GREEN))
+            status_parts.append(c("signing required", Colors.GREEN))
         else:
-            status_parts.append(c('signing NOT required', Colors.RED))
+            status_parts.append(c("signing NOT required", Colors.RED))
 
         if dialect:
             status_parts.append(f"SMB {dialect}")
 
         if smbv1 is not None:
-            smbv1_str = c('SMBv1', Colors.RED) if smbv1 else 'no SMBv1'
+            smbv1_str = c("SMBv1", Colors.RED) if smbv1 else "no SMBv1"
             status_parts.append(smbv1_str)
 
         host_color = Colors.RED if not signing_req else Colors.GREEN
@@ -431,12 +446,12 @@ def enum_signing(args, cache):
     signing_required = True
     hosts_without_signing = []
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         line = line.strip()
         if not line:
             continue
 
-        if '(signing:False)' in line or 'signing:False' in line:
+        if "(signing:False)" in line or "signing:False" in line:
             signing_required = False
             hostname_match = RE_HOSTNAME.search(line)
             if hostname_match:
@@ -448,7 +463,7 @@ def enum_signing(args, cache):
                     hosts_without_signing.append(args.target)
 
     # Merge hosts from verbose parsing
-    for host in verbose_data.get('hosts_signing_not_required', []):
+    for host in verbose_data.get("hosts_signing_not_required", []):
         if host not in hosts_without_signing:
             hosts_without_signing.append(host)
             signing_required = False
@@ -457,20 +472,23 @@ def enum_signing(args, cache):
 
     # Store verbose signing info in cache
     cache.smb_signing_info = {
-        'hosts': verbose_data.get('hosts', {}),
-        'dialect': verbose_data.get('dialect'),
-        'smbv1_enabled': verbose_data.get('smbv1_enabled'),
-        'security_mode': verbose_data.get('security_mode'),
-        'capabilities': verbose_data.get('capabilities', []),
-        'encryption_supported': verbose_data.get('encryption_supported'),
-        'hosts_signing_required': verbose_data.get('hosts_signing_required', []),
-        'hosts_signing_not_required': hosts_without_signing,
-        'info_messages': verbose_data.get('info_messages', []),
-        'errors': verbose_data.get('errors', [])
+        "hosts": verbose_data.get("hosts", {}),
+        "dialect": verbose_data.get("dialect"),
+        "smbv1_enabled": verbose_data.get("smbv1_enabled"),
+        "security_mode": verbose_data.get("security_mode"),
+        "capabilities": verbose_data.get("capabilities", []),
+        "encryption_supported": verbose_data.get("encryption_supported"),
+        "hosts_signing_required": verbose_data.get("hosts_signing_required", []),
+        "hosts_signing_not_required": hosts_without_signing,
+        "info_messages": verbose_data.get("info_messages", []),
+        "errors": verbose_data.get("errors", []),
     }
 
     if not signing_required:
-        status(f"SMB signing is {c('NOT REQUIRED', Colors.RED)} - vulnerable to relay attacks!", "warning")
+        status(
+            f"SMB signing is {c('NOT REQUIRED', Colors.RED)} - vulnerable to relay attacks!",
+            "warning",
+        )
         for host in hosts_without_signing:
             output(f"  {c(host, Colors.RED)}")
 
@@ -485,16 +503,16 @@ def enum_signing(args, cache):
             finding="SMB signing not required",
             command=f"ntlmrelayx.py -t {args.target} -smb2support",
             description="Relay captured NTLM authentication to execute commands",
-            priority="high"
+            priority="high",
         )
 
         # If SMBv1 is enabled, add EternalBlue recommendation
-        if verbose_data.get('smbv1_enabled'):
+        if verbose_data.get("smbv1_enabled"):
             cache.add_next_step(
                 finding="SMBv1 enabled on target",
                 command=f"nmap -p 445 --script smb-vuln-ms17-010 {args.target}",
                 description="Check for EternalBlue (MS17-010) vulnerability",
-                priority="high"
+                priority="high",
             )
     else:
         status(f"SMB signing is {c('REQUIRED', Colors.GREEN)} - relay attacks blocked", "success")
@@ -506,23 +524,23 @@ def enum_signing(args, cache):
         _display_per_host_info(verbose_data)
 
     # Display any info messages from verbose output
-    if verbose_data.get('info_messages'):
+    if verbose_data.get("info_messages"):
         output("")
         output(c("Signing Negotiation Info:", Colors.CYAN))
-        for msg in verbose_data['info_messages'][:5]:  # Limit to first 5
+        for msg in verbose_data["info_messages"][:5]:  # Limit to first 5
             output(f"  {msg}")
 
     if args.json_output:
-        JSON_DATA['smb_signing'] = {
-            'required': signing_required,
-            'vulnerable_hosts': hosts_without_signing,
-            'hosts_signing_required': verbose_data.get('hosts_signing_required', []),
-            'dialect': verbose_data.get('dialect'),
-            'smbv1_enabled': verbose_data.get('smbv1_enabled'),
-            'security_mode': verbose_data.get('security_mode'),
-            'capabilities': verbose_data.get('capabilities', []),
-            'encryption_supported': verbose_data.get('encryption_supported'),
-            'per_host_info': verbose_data.get('hosts', {}),
-            'info_messages': verbose_data.get('info_messages', []),
-            'errors': verbose_data.get('errors', [])
+        JSON_DATA["smb_signing"] = {
+            "required": signing_required,
+            "vulnerable_hosts": hosts_without_signing,
+            "hosts_signing_required": verbose_data.get("hosts_signing_required", []),
+            "dialect": verbose_data.get("dialect"),
+            "smbv1_enabled": verbose_data.get("smbv1_enabled"),
+            "security_mode": verbose_data.get("security_mode"),
+            "capabilities": verbose_data.get("capabilities", []),
+            "encryption_supported": verbose_data.get("encryption_supported"),
+            "per_host_info": verbose_data.get("hosts", {}),
+            "info_messages": verbose_data.get("info_messages", []),
+            "errors": verbose_data.get("errors", []),
         }

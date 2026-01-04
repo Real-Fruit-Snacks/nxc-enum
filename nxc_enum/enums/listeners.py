@@ -2,8 +2,8 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
+from ..core.output import JSON_DATA, print_section, status
 from ..core.runner import check_port
-from ..core.output import status, print_section, JSON_DATA
 
 
 def enum_listeners(args, listener_results: dict):
@@ -29,7 +29,7 @@ def enum_listeners(args, listener_results: dict):
 
     # Process results in original order for consistent output
     for name, port, is_open in results:
-        listener_results[name] = {'port': port, 'open': is_open}
+        listener_results[name] = {"port": port, "open": is_open}
         status(f"Checking {name}")
         if is_open:
             status(f"{name} is accessible on {port}/tcp", "success")
@@ -37,4 +37,4 @@ def enum_listeners(args, listener_results: dict):
             status(f"{name} is not accessible on {port}/tcp", "error")
 
     if args.json_output:
-        JSON_DATA['listeners'] = listener_results
+        JSON_DATA["listeners"] = listener_results

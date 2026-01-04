@@ -20,7 +20,7 @@ Examples:
 Multi-credential mode:
   nxc-enum 10.0.24.230 -C creds.txt -A              # user:password per line
   nxc-enum 10.0.24.230 -U users.txt -P passes.txt   # paired line-by-line
-        """
+        """,
     )
 
     parser.add_argument("target", help="Target IP or hostname")
@@ -41,21 +41,35 @@ Multi-credential mode:
     parser.add_argument("--printers", action="store_true", help="Enumerate printers")
     parser.add_argument("--av", action="store_true", help="Enumerate AV/EDR products")
     # New enumeration features
-    parser.add_argument("--delegation", action="store_true", help="Find delegation misconfigurations")
-    parser.add_argument("--descriptions", action="store_true", help="Extract user description fields")
+    parser.add_argument(
+        "--delegation", action="store_true", help="Find delegation misconfigurations"
+    )
+    parser.add_argument(
+        "--descriptions", action="store_true", help="Extract user description fields"
+    )
     parser.add_argument("--maq", action="store_true", help="Check machine account quota")
     parser.add_argument("--adcs", action="store_true", help="Enumerate ADCS certificate templates")
     parser.add_argument("--dc-list", action="store_true", help="List domain controllers and trusts")
-    parser.add_argument("--pwd-not-reqd", action="store_true", help="Find accounts without password requirement")
-    parser.add_argument("--admin-count", action="store_true", help="Find accounts with adminCount attribute")
+    parser.add_argument(
+        "--pwd-not-reqd", action="store_true", help="Find accounts without password requirement"
+    )
+    parser.add_argument(
+        "--admin-count", action="store_true", help="Find accounts with adminCount attribute"
+    )
     parser.add_argument("--signing", action="store_true", help="Check SMB signing requirements")
     parser.add_argument("--webdav", action="store_true", help="Check WebClient service status")
     parser.add_argument("--dns", action="store_true", help="Enumerate DNS records")
-    parser.add_argument("-t", "--timeout", type=int, default=30, help="Timeout in seconds (default: 30)")
+    parser.add_argument(
+        "-t", "--timeout", type=int, default=30, help="Timeout in seconds (default: 30)"
+    )
     parser.add_argument("-q", "--quiet", action="store_true", help="Suppress banner")
     parser.add_argument("-o", "--output", help="Output file")
-    parser.add_argument("-j", "--json", dest="json_output", action="store_true", help="Output in JSON format")
+    parser.add_argument(
+        "-j", "--json", dest="json_output", action="store_true", help="Output in JSON format"
+    )
     parser.add_argument("--no-validate", action="store_true", help="Skip credential validation")
-    parser.add_argument("--debug", action="store_true", help="Show raw nxc output before parsed data")
+    parser.add_argument(
+        "--debug", action="store_true", help="Show raw nxc output before parsed data"
+    )
 
     return parser

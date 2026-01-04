@@ -7,60 +7,62 @@ This module orchestrates the nxc-enum enumeration workflow:
 4. Generate reports and write output
 """
 
+import json
 import os
 import sys
 import time
-import json
 
-from .args import create_parser
-from ..core.runner import run_nxc
-from ..core.output import (
-    output, status, print_banner, OUTPUT_BUFFER,
-    JSON_DATA, set_output_file_requested, set_debug_mode
-)
 from ..core.colors import Colors, c
 from ..core.constants import RE_ANSI_ESCAPE
+from ..core.output import (
+    JSON_DATA,
+    OUTPUT_BUFFER,
+    output,
+    print_banner,
+    set_debug_mode,
+    set_output_file_requested,
+    status,
+)
 from ..core.parallel import run_parallel_modules
+from ..core.runner import run_nxc
+
+# Import all enum functions
+from ..enums import (
+    enum_adcs,
+    enum_admin_count,
+    enum_av,
+    enum_av_multi,
+    enum_dc_list,
+    enum_delegation,
+    enum_descriptions,
+    enum_dns,
+    enum_domain_intel,
+    enum_groups,
+    enum_kerberoastable,
+    enum_listeners,
+    enum_loggedon,
+    enum_loggedon_multi,
+    enum_maq,
+    enum_os_info,
+    enum_policies,
+    enum_printers,
+    enum_printers_multi,
+    enum_pwd_not_required,
+    enum_rpc_session,
+    enum_sessions,
+    enum_sessions_multi,
+    enum_shares,
+    enum_shares_multi,
+    enum_signing,
+    enum_smb_info,
+    enum_target_info,
+    enum_users,
+    enum_webdav,
+)
 from ..models.cache import EnumCache
 from ..models.credential import CredentialError
 from ..models.results import MultiUserResults
 from ..parsing.credentials import parse_credentials
-from ..validation.single import validate_credentials
-from ..validation.multi import validate_credentials_multi
-
-# Import all enum functions
-from ..enums import (
-    enum_target_info,
-    enum_listeners,
-    enum_domain_intel,
-    enum_smb_info,
-    enum_rpc_session,
-    enum_os_info,
-    enum_users,
-    enum_groups,
-    enum_shares,
-    enum_shares_multi,
-    enum_policies,
-    enum_sessions,
-    enum_sessions_multi,
-    enum_loggedon,
-    enum_loggedon_multi,
-    enum_printers,
-    enum_printers_multi,
-    enum_av,
-    enum_av_multi,
-    enum_kerberoastable,
-    enum_delegation,
-    enum_descriptions,
-    enum_maq,
-    enum_adcs,
-    enum_dc_list,
-    enum_pwd_not_required,
-    enum_admin_count,
-    enum_signing,
-    enum_webdav,
-    enum_dns,
-)
 
 # Import reporting functions
 from ..reporting import (
@@ -68,6 +70,9 @@ from ..reporting import (
     print_executive_summary_multi,
     print_next_steps,
 )
+from ..validation.multi import validate_credentials_multi
+from ..validation.single import validate_credentials
+from .args import create_parser
 
 
 def main():
@@ -181,12 +186,28 @@ def main():
             sys.exit(1)
 
     # If no specific modules selected, default to -A behavior
-    run_all = args.all or not any((
-        args.users, args.groups, args.shares, args.policies, args.sessions,
-        args.loggedon, args.printers, args.av, args.delegation, args.descriptions,
-        args.maq, args.adcs, args.dc_list, args.pwd_not_reqd, args.admin_count,
-        args.signing, args.webdav, args.dns
-    ))
+    run_all = args.all or not any(
+        (
+            args.users,
+            args.groups,
+            args.shares,
+            args.policies,
+            args.sessions,
+            args.loggedon,
+            args.printers,
+            args.av,
+            args.delegation,
+            args.descriptions,
+            args.maq,
+            args.adcs,
+            args.dc_list,
+            args.pwd_not_reqd,
+            args.admin_count,
+            args.signing,
+            args.webdav,
+            args.dns,
+        )
+    )
 
     # Target info always shown (pass creds for admin detection)
     enum_target_info(args, creds)
@@ -320,7 +341,7 @@ def main():
     output(f"Completed after {elapsed:.2f} seconds")
 
     if args.json_output:
-        JSON_DATA['elapsed_time'] = elapsed
+        JSON_DATA["elapsed_time"] = elapsed
 
     # Write output to file if specified
     # Security: Create file with restricted permissions (owner read/write only)
@@ -330,15 +351,15 @@ def main():
             # Create file with 0o600 permissions (owner read/write only)
             # This prevents other users from reading potentially sensitive enumeration results
             fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, 'w') as f:
+            with os.fdopen(fd, "w") as f:
                 fd = None  # fdopen takes ownership, don't close fd separately
                 if args.json_output:
                     json.dump(JSON_DATA, f, indent=2)
                 else:
                     # Strip ANSI codes for file output using pre-compiled regex
                     for line in OUTPUT_BUFFER:
-                        clean_line = RE_ANSI_ESCAPE.sub('', line)
-                        f.write(clean_line + '\n')
+                        clean_line = RE_ANSI_ESCAPE.sub("", line)
+                        f.write(clean_line + "\n")
             status(f"Output written to: {args.output} (permissions: 600)", "success")
         except (IOError, OSError) as e:
             status(f"Failed to write output file: {e}", "error")

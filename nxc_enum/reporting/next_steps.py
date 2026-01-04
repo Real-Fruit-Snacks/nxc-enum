@@ -1,7 +1,7 @@
 """Next steps / recommended commands section."""
 
-from ..core.output import output, print_section, JSON_DATA
 from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, output, print_section
 
 
 def print_next_steps(args, cache):
@@ -14,7 +14,7 @@ def print_next_steps(args, cache):
         return
 
     # Filter out invalid steps (must have finding and command)
-    valid_steps = [s for s in cache.next_steps if s.get('finding') and s.get('command')]
+    valid_steps = [s for s in cache.next_steps if s.get("finding") and s.get("command")]
 
     if not valid_steps:
         return
@@ -22,9 +22,9 @@ def print_next_steps(args, cache):
     print_section("Recommended Next Steps", args.target)
 
     # Group by priority (default to 'medium' consistently)
-    high_priority = [s for s in valid_steps if s.get('priority', 'medium') == 'high']
-    medium_priority = [s for s in valid_steps if s.get('priority', 'medium') == 'medium']
-    low_priority = [s for s in valid_steps if s.get('priority', 'medium') == 'low']
+    high_priority = [s for s in valid_steps if s.get("priority", "medium") == "high"]
+    medium_priority = [s for s in valid_steps if s.get("priority", "medium") == "medium"]
+    low_priority = [s for s in valid_steps if s.get("priority", "medium") == "low"]
 
     if high_priority:
         output(c(f"HIGH PRIORITY ({len(high_priority)})", Colors.RED + Colors.BOLD))
@@ -46,18 +46,39 @@ def print_next_steps(args, cache):
 
     # Add to JSON output if requested
     if args.json_output:
-        JSON_DATA['next_steps'] = {
-            'high': [{'finding': s['finding'], 'command': s['command'], 'description': s.get('description', '')} for s in high_priority],
-            'medium': [{'finding': s['finding'], 'command': s['command'], 'description': s.get('description', '')} for s in medium_priority],
-            'low': [{'finding': s['finding'], 'command': s['command'], 'description': s.get('description', '')} for s in low_priority],
+        JSON_DATA["next_steps"] = {
+            "high": [
+                {
+                    "finding": s["finding"],
+                    "command": s["command"],
+                    "description": s.get("description", ""),
+                }
+                for s in high_priority
+            ],
+            "medium": [
+                {
+                    "finding": s["finding"],
+                    "command": s["command"],
+                    "description": s.get("description", ""),
+                }
+                for s in medium_priority
+            ],
+            "low": [
+                {
+                    "finding": s["finding"],
+                    "command": s["command"],
+                    "description": s.get("description", ""),
+                }
+                for s in low_priority
+            ],
         }
 
 
 def _print_step(step: dict, accent_color: str = Colors.CYAN):
     """Print a single next step recommendation."""
-    finding = step.get('finding', '')
-    command = step.get('command', '')
-    description = step.get('description', '')
+    finding = step.get("finding", "")
+    command = step.get("command", "")
+    description = step.get("description", "")
 
     output(f"  {c('→', accent_color)} {c(finding, Colors.BOLD)}")
     if description:

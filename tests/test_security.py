@@ -5,14 +5,14 @@ Tests credential sanitization, file permissions, and other security features.
 
 import os
 import stat
+import sys
 import tempfile
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
-import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from nxc_enum.core.output import _sanitize_cmd_args, _SENSITIVE_ARGS, _REDACTED
+from nxc_enum.core.output import _REDACTED, _SENSITIVE_ARGS, _sanitize_cmd_args
 from nxc_enum.models.credential import Credential, CredentialError
 from nxc_enum.parsing.credentials import _check_file_permissions
 
@@ -142,17 +142,17 @@ class TestCredentialValidation(unittest.TestCase):
     def test_auth_type_password(self):
         """Test auth_type() returns 'password'."""
         cred = Credential(user="admin", password="secret")
-        self.assertEqual(cred.auth_type(), 'password')
+        self.assertEqual(cred.auth_type(), "password")
 
     def test_auth_type_hash(self):
         """Test auth_type() returns 'hash'."""
         cred = Credential(user="admin", hash="abc123")
-        self.assertEqual(cred.auth_type(), 'hash')
+        self.assertEqual(cred.auth_type(), "hash")
 
     def test_auth_type_none(self):
         """Test auth_type() returns 'none'."""
         cred = Credential(user="admin")
-        self.assertEqual(cred.auth_type(), 'none')
+        self.assertEqual(cred.auth_type(), "none")
 
     def test_display_name_with_domain(self):
         """Test display_name() with domain."""
@@ -198,7 +198,7 @@ class TestFilePermissions(unittest.TestCase):
 
     def test_check_file_permissions_secure(self):
         """Test that secure permissions don't generate warnings."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("admin:password\n")
             temp_path = f.name
 
@@ -207,7 +207,7 @@ class TestFilePermissions(unittest.TestCase):
             os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR)  # 0o600
 
             # Should not print warning - capture stdout
-            with patch('builtins.print') as mock_print:
+            with patch("builtins.print") as mock_print:
                 _check_file_permissions(temp_path)
                 # No warning should be printed for secure permissions
                 for call in mock_print.call_args_list:
@@ -217,7 +217,7 @@ class TestFilePermissions(unittest.TestCase):
 
     def test_check_file_permissions_insecure_group(self):
         """Test that group-readable permissions generate warnings."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("admin:password\n")
             temp_path = f.name
 
@@ -226,7 +226,7 @@ class TestFilePermissions(unittest.TestCase):
             os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP)  # 0o640
 
             # Should print warning
-            with patch('builtins.print') as mock_print:
+            with patch("builtins.print") as mock_print:
                 _check_file_permissions(temp_path)
                 # Check if warning was printed
                 warning_printed = any("Warning" in str(call) for call in mock_print.call_args_list)
@@ -236,7 +236,7 @@ class TestFilePermissions(unittest.TestCase):
 
     def test_check_file_permissions_insecure_world(self):
         """Test that world-readable permissions generate warnings."""
-        with tempfile.NamedTemporaryFile(mode='w', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("admin:password\n")
             temp_path = f.name
 
@@ -245,7 +245,7 @@ class TestFilePermissions(unittest.TestCase):
             os.chmod(temp_path, stat.S_IRUSR | stat.S_IWUSR | stat.S_IROTH)  # 0o604
 
             # Should print warning
-            with patch('builtins.print') as mock_print:
+            with patch("builtins.print") as mock_print:
                 _check_file_permissions(temp_path)
                 warning_printed = any("Warning" in str(call) for call in mock_print.call_args_list)
                 self.assertTrue(warning_printed)
@@ -253,5 +253,5 @@ class TestFilePermissions(unittest.TestCase):
             os.unlink(temp_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

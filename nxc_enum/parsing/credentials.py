@@ -3,8 +3,9 @@
 import os
 import stat
 import sys
-from ..models.credential import Credential
+
 from ..core.constants import RE_NTLM_HASH
+from ..models.credential import Credential
 
 
 def _check_file_permissions(filepath: str) -> None:
@@ -47,14 +48,14 @@ def parse_credentials(args) -> list[Credential]:
 
         # Parse user:password or user:hash lines from credential file
         try:
-            with open(args.credfile, encoding='utf-8-sig') as f:
+            with open(args.credfile, encoding="utf-8-sig") as f:
                 for line in f:
                     line = line.strip()
-                    if not line or line.startswith('#'):
+                    if not line or line.startswith("#"):
                         continue
-                    if ':' in line:
+                    if ":" in line:
                         # Split on first colon only (passwords may contain colons)
-                        user, secret = line.split(':', 1)
+                        user, secret = line.split(":", 1)
                         user = user.strip()
                         secret = secret.strip()
                         if not user:
@@ -82,13 +83,15 @@ def parse_credentials(args) -> list[Credential]:
 
         # Pair users and passwords line by line
         try:
-            with open(args.userfile, encoding='utf-8-sig') as uf:
-                users = [l.strip() for l in uf if l.strip() and not l.startswith('#')]
-            with open(args.passfile, encoding='utf-8-sig') as pf:
-                passwords = [l.strip() for l in pf if l.strip() and not l.startswith('#')]
+            with open(args.userfile, encoding="utf-8-sig") as uf:
+                users = [l.strip() for l in uf if l.strip() and not l.startswith("#")]
+            with open(args.passfile, encoding="utf-8-sig") as pf:
+                passwords = [l.strip() for l in pf if l.strip() and not l.startswith("#")]
             # Warn before processing if counts don't match
             if len(users) != len(passwords):
-                print(f"Warning: User count ({len(users)}) != password count ({len(passwords)}), pairing will be truncated to {min(len(users), len(passwords))}")
+                print(
+                    f"Warning: User count ({len(users)}) != password count ({len(passwords)}), pairing will be truncated to {min(len(users), len(passwords))}"
+                )
             for user, password in zip(users, passwords):
                 creds.append(Credential(user=user, password=password, domain=args.domain))
         except FileNotFoundError as e:
@@ -103,11 +106,8 @@ def parse_credentials(args) -> list[Credential]:
 
     elif args.user:
         # Single credential (backward compatible)
-        creds.append(Credential(
-            user=args.user,
-            password=args.password,
-            hash=args.hash,
-            domain=args.domain
-        ))
+        creds.append(
+            Credential(user=args.user, password=args.password, hash=args.hash, domain=args.domain)
+        )
 
     return creds

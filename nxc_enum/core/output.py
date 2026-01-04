@@ -1,6 +1,7 @@
 """Output and display functions."""
 
 import threading
+
 from .colors import Colors, c
 from .constants import INDICATORS
 
@@ -18,8 +19,8 @@ OUTPUT_BUFFER = []
 JSON_DATA = {}
 
 # Credential-related arguments that should be redacted in debug output
-_SENSITIVE_ARGS = ('-p', '-H', '--password', '--hash')
-_REDACTED = '****REDACTED****'
+_SENSITIVE_ARGS = ("-p", "-H", "--password", "--hash")
+_REDACTED = "****REDACTED****"
 
 
 def set_output_file_requested(value: bool):
@@ -68,7 +69,7 @@ def output(msg: str):
     """
     global _parallel_mode, _output_file_requested
 
-    if _parallel_mode and hasattr(_thread_local, 'buffer'):
+    if _parallel_mode and hasattr(_thread_local, "buffer"):
         _thread_local.buffer.append(msg)
     else:
         print(msg)
@@ -160,14 +161,14 @@ def debug_nxc(cmd_args: list, stdout: str, stderr: str, label: str = ""):
 
     if stdout.strip():
         output(c("STDOUT:", Colors.CYAN))
-        for line in stdout.strip().split('\n'):
+        for line in stdout.strip().split("\n"):
             output(c(f"  {line}", Colors.CYAN))
     else:
         output(c("STDOUT: (empty)", Colors.CYAN))
 
     if stderr.strip():
         output(c("STDERR:", Colors.YELLOW))
-        for line in stderr.strip().split('\n'):
+        for line in stderr.strip().split("\n"):
             output(c(f"  {line}", Colors.YELLOW))
 
     output(c(f"{'─' * 60}", Colors.CYAN))

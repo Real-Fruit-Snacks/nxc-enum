@@ -2,11 +2,16 @@
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from .output import (
-    output, status, OUTPUT_BUFFER, _buffer_lock,
-    set_parallel_mode, get_thread_local, get_output_file_requested
-)
 from .constants import PARALLEL_MODULE_WORKERS
+from .output import (
+    OUTPUT_BUFFER,
+    _buffer_lock,
+    get_output_file_requested,
+    get_thread_local,
+    output,
+    set_parallel_mode,
+    status,
+)
 
 
 def run_parallel_modules(args, cache, is_admin: bool = False) -> None:
@@ -24,22 +29,22 @@ def run_parallel_modules(args, cache, is_admin: bool = False) -> None:
     _thread_local = get_thread_local()
 
     # Import here to avoid circular imports
-    from ..enums.shares import enum_shares
-    from ..enums.policies import enum_policies
-    from ..enums.sessions import enum_sessions
-    from ..enums.loggedon import enum_loggedon
-    from ..enums.printers import enum_printers
     from ..enums.av import enum_av
     from ..enums.kerberoastable import enum_kerberoastable
+    from ..enums.loggedon import enum_loggedon
+    from ..enums.policies import enum_policies
+    from ..enums.printers import enum_printers
+    from ..enums.sessions import enum_sessions
+    from ..enums.shares import enum_shares
 
     # Modules: (function, name, requires_admin)
     modules = [
         (enum_shares, "Shares", False),
         (enum_policies, "Policies", False),
-        (enum_sessions, "Sessions", True),      # Requires local admin
-        (enum_loggedon, "Logged On", True),     # Requires local admin
+        (enum_sessions, "Sessions", True),  # Requires local admin
+        (enum_loggedon, "Logged On", True),  # Requires local admin
         (enum_printers, "Printers", False),
-        (enum_av, "AV/EDR", True),              # Requires local admin
+        (enum_av, "AV/EDR", True),  # Requires local admin
         (enum_kerberoastable, "Kerberoastable", False),
     ]
 
@@ -76,7 +81,10 @@ def run_parallel_modules(args, cache, is_admin: bool = False) -> None:
 
     # Report failed modules summary if any
     if failed_modules:
-        status(f"Warning: {len(failed_modules)} module(s) failed: {', '.join(failed_modules)}", "warning")
+        status(
+            f"Warning: {len(failed_modules)} module(s) failed: {', '.join(failed_modules)}",
+            "warning",
+        )
 
     # Print buffered output in original order
     # Use lock when appending to OUTPUT_BUFFER for thread safety

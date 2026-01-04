@@ -2,12 +2,13 @@
 
 import logging
 import subprocess
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Optional
 
-from ..core.runner import run_nxc
-from ..core.output import debug_nxc
 from ..core.constants import CACHE_PRIME_WORKERS, DEFAULT_COMMAND_TIMEOUT
+from ..core.output import debug_nxc
+from ..core.runner import run_nxc
 
 # Set up logging for cache errors (won't output unless configured)
 _logger = logging.getLogger(__name__)
@@ -90,7 +91,9 @@ class EnumCache:
         # RPC session verbose data (connection, auth, bindings)
         self.rpc_session_info = {}
 
-    def add_next_step(self, finding: str, command: str, description: str = "", priority: str = "medium"):
+    def add_next_step(
+        self, finding: str, command: str, description: str = "", priority: str = "medium"
+    ):
         """Add a recommended next step based on a finding.
 
         Args:
@@ -99,12 +102,14 @@ class EnumCache:
             description: Optional explanation of what the command does
             priority: "high", "medium", or "low" for sorting
         """
-        self.next_steps.append({
-            'finding': finding,
-            'command': command,
-            'description': description,
-            'priority': priority
-        })
+        self.next_steps.append(
+            {
+                "finding": finding,
+                "command": command,
+                "description": description,
+                "priority": priority,
+            }
+        )
 
     def get_smb_basic(self, target: str, auth: list) -> tuple[int, str, str]:
         """Get cached or fresh SMB basic info."""

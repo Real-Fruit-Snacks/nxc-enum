@@ -3,14 +3,16 @@
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..core.runner import run_nxc
-from ..core.output import output, status, print_section
 from ..core.colors import Colors, c
 from ..core.constants import MAX_CREDENTIAL_VALIDATION_WORKERS
+from ..core.output import output, print_section, status
+from ..core.runner import run_nxc
 from ..models.credential import Credential
 
 
-def validate_credentials_multi(target: str, creds: list[Credential], timeout: int) -> list[Credential]:
+def validate_credentials_multi(
+    target: str, creds: list[Credential], timeout: int
+) -> list[Credential]:
     """Validate multiple credentials in parallel, return list of valid ones."""
     print_section("Credential Validation", target)
     status(f"Testing {len(creds)} credential(s)...")
@@ -21,18 +23,18 @@ def validate_credentials_multi(target: str, creds: list[Credential], timeout: in
         # Combine stdout and stderr for checking (verbose output may go to either)
         combined_output = stdout + stderr
         # Check for successful auth (no STATUS_ error)
-        success = '[+]' in combined_output and 'STATUS_' not in combined_output
+        success = "[+]" in combined_output and "STATUS_" not in combined_output
         cred.valid = success
         # Check for local admin (Pwn3d!)
-        is_admin = 'Pwn3d!' in combined_output
+        is_admin = "Pwn3d!" in combined_output
         cred.is_admin = is_admin
         # Extract error message if failed
         error_msg = ""
         if not success:
-            for line in stdout.split('\n'):
-                if 'STATUS_' in line:
+            for line in stdout.split("\n"):
+                if "STATUS_" in line:
                     # Extract the STATUS code
-                    match = re.search(r'(STATUS_\w+)', line)
+                    match = re.search(r"(STATUS_\w+)", line)
                     if match:
                         error_msg = match.group(1)
                         break
@@ -41,7 +43,9 @@ def validate_credentials_multi(target: str, creds: list[Credential], timeout: in
     valid_creds = []
     invalid_creds = []
 
-    with ThreadPoolExecutor(max_workers=min(len(creds), MAX_CREDENTIAL_VALIDATION_WORKERS)) as executor:
+    with ThreadPoolExecutor(
+        max_workers=min(len(creds), MAX_CREDENTIAL_VALIDATION_WORKERS)
+    ) as executor:
         futures = [executor.submit(test_cred, cred) for cred in creds]
         for future in as_completed(futures):
             try:
@@ -62,7 +66,10 @@ def validate_credentials_multi(target: str, creds: list[Credential], timeout: in
     admin_count = sum(1 for cred in valid_creds if cred.is_admin)
     if valid_creds:
         admin_info = f" ({admin_count} with local admin)" if admin_count > 0 else ""
-        status(f"{len(valid_creds)}/{len(creds)} credentials validated successfully{admin_info}", "success")
+        status(
+            f"{len(valid_creds)}/{len(creds)} credentials validated successfully{admin_info}",
+            "success",
+        )
     else:
         status(f"No valid credentials found!", "error")
 

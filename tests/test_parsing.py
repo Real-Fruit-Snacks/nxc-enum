@@ -6,20 +6,20 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from nxc_enum.parsing.classify import (
+    classify_groups,
+    classify_users,
+    is_builtin_account,
+    is_computer_account,
+    is_service_account,
+    safe_int,
+)
 from nxc_enum.parsing.nxc_output import (
+    extract_after_port,
+    extract_status_content,
+    find_port_index,
     is_nxc_noise_line,
     parse_nxc_output,
-    extract_after_port,
-    find_port_index,
-    extract_status_content
-)
-from nxc_enum.parsing.classify import (
-    safe_int,
-    is_service_account,
-    is_computer_account,
-    is_builtin_account,
-    classify_users,
-    classify_groups
 )
 
 
@@ -38,7 +38,9 @@ class TestNxcOutputParsing(unittest.TestCase):
 
     def test_is_nxc_noise_line_connection_metadata(self):
         """Test that connection metadata is filtered."""
-        self.assertTrue(is_nxc_noise_line("SMB 10.0.0.1 445 (name:DC01) (domain:CORP) (signing:True)"))
+        self.assertTrue(
+            is_nxc_noise_line("SMB 10.0.0.1 445 (name:DC01) (domain:CORP) (signing:True)")
+        )
 
     def test_is_nxc_noise_line_info_lines(self):
         """Test that INFO verbose lines are filtered."""
@@ -62,8 +64,8 @@ class TestNxcOutputParsing(unittest.TestCase):
         results = parse_nxc_output(stdout)
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0], ('success', 'Authentication successful'))
-        self.assertEqual(results[1], ('success', 'Found 5 shares'))
+        self.assertEqual(results[0], ("success", "Authentication successful"))
+        self.assertEqual(results[1], ("success", "Found 5 shares"))
 
     def test_parse_nxc_output_error(self):
         """Test parsing error indicators."""
@@ -71,8 +73,8 @@ class TestNxcOutputParsing(unittest.TestCase):
         results = parse_nxc_output(stdout)
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0], ('error', 'Authentication failed'))
-        self.assertEqual(results[1], ('error', 'Access denied'))
+        self.assertEqual(results[0], ("error", "Authentication failed"))
+        self.assertEqual(results[1], ("error", "Access denied"))
 
     def test_parse_nxc_output_info(self):
         """Test parsing info indicators."""
@@ -80,8 +82,8 @@ class TestNxcOutputParsing(unittest.TestCase):
         results = parse_nxc_output(stdout)
 
         self.assertEqual(len(results), 2)
-        self.assertEqual(results[0], ('info', 'Connecting to 10.0.0.1'))
-        self.assertEqual(results[1], ('info', 'Enumeration complete'))
+        self.assertEqual(results[0], ("info", "Connecting to 10.0.0.1"))
+        self.assertEqual(results[1], ("info", "Enumeration complete"))
 
     def test_parse_nxc_output_filters_noise(self):
         """Test that noise lines are filtered from parsed output."""
@@ -89,7 +91,7 @@ class TestNxcOutputParsing(unittest.TestCase):
         results = parse_nxc_output(stdout)
 
         self.assertEqual(len(results), 2)
-        self.assertNotIn(('info', 'Socket info'), results)
+        self.assertNotIn(("info", "Socket info"), results)
 
     def test_extract_after_port_found(self):
         """Test extracting content after port number."""
@@ -136,22 +138,22 @@ class TestNxcOutputParsing(unittest.TestCase):
     def test_extract_status_content_success(self):
         """Test extracting success status."""
         result = extract_status_content("[+] Authentication successful")
-        self.assertEqual(result, ('success', 'Authentication successful'))
+        self.assertEqual(result, ("success", "Authentication successful"))
 
     def test_extract_status_content_error(self):
         """Test extracting error status."""
         result = extract_status_content("[-] Access denied")
-        self.assertEqual(result, ('error', 'Access denied'))
+        self.assertEqual(result, ("error", "Access denied"))
 
     def test_extract_status_content_info(self):
         """Test extracting info status."""
         result = extract_status_content("[*] Enumerating shares")
-        self.assertEqual(result, ('info', 'Enumerating shares'))
+        self.assertEqual(result, ("info", "Enumerating shares"))
 
     def test_extract_status_content_warning(self):
         """Test extracting warning status."""
         result = extract_status_content("[!] SMB signing disabled")
-        self.assertEqual(result, ('warning', 'SMB signing disabled'))
+        self.assertEqual(result, ("warning", "SMB signing disabled"))
 
     def test_extract_status_content_none(self):
         """Test when no status indicator found."""
@@ -206,57 +208,57 @@ class TestClassification(unittest.TestCase):
 
     def test_is_builtin_account(self):
         """Test built-in account detection by RID."""
-        self.assertTrue(is_builtin_account(500))   # Administrator
-        self.assertTrue(is_builtin_account(501))   # Guest
-        self.assertTrue(is_builtin_account(999))   # Max builtin
-        self.assertFalse(is_builtin_account(1000)) # First regular user
+        self.assertTrue(is_builtin_account(500))  # Administrator
+        self.assertTrue(is_builtin_account(501))  # Guest
+        self.assertTrue(is_builtin_account(999))  # Max builtin
+        self.assertFalse(is_builtin_account(1000))  # First regular user
         self.assertFalse(is_builtin_account(1234))
 
     def test_classify_users(self):
         """Test user classification into categories."""
         users = {
-            'Administrator': {'rid': '500'},
-            'Guest': {'rid': '501'},
-            'svc_backup': {'rid': '1001'},
-            'DC01$': {'rid': '1002'},
-            'john.doe': {'rid': '1003'},
+            "Administrator": {"rid": "500"},
+            "Guest": {"rid": "501"},
+            "svc_backup": {"rid": "1001"},
+            "DC01$": {"rid": "1002"},
+            "john.doe": {"rid": "1003"},
         }
 
         result = classify_users(users)
 
         # Check categorization
-        builtin_names = [u[0] for u in result['builtin']]
-        self.assertIn('Administrator', builtin_names)
-        self.assertIn('Guest', builtin_names)
+        builtin_names = [u[0] for u in result["builtin"]]
+        self.assertIn("Administrator", builtin_names)
+        self.assertIn("Guest", builtin_names)
 
-        service_names = [u[0] for u in result['service']]
-        self.assertIn('svc_backup', service_names)
+        service_names = [u[0] for u in result["service"]]
+        self.assertIn("svc_backup", service_names)
 
-        computer_names = [u[0] for u in result['computer']]
-        self.assertIn('DC01$', computer_names)
+        computer_names = [u[0] for u in result["computer"]]
+        self.assertIn("DC01$", computer_names)
 
-        domain_names = [u[0] for u in result['domain']]
-        self.assertIn('john.doe', domain_names)
+        domain_names = [u[0] for u in result["domain"]]
+        self.assertIn("john.doe", domain_names)
 
     def test_classify_groups(self):
         """Test group classification into high-value and other."""
         groups = {
-            'Domain Admins': {'rid': '512'},
-            'Domain Users': {'rid': '513'},
-            'Enterprise Admins': {'rid': '519'},
-            'IT Support': {'rid': '1001'},
+            "Domain Admins": {"rid": "512"},
+            "Domain Users": {"rid": "513"},
+            "Enterprise Admins": {"rid": "519"},
+            "IT Support": {"rid": "1001"},
         }
 
         result = classify_groups(groups)
 
-        high_value_names = [g[0] for g in result['high_value']]
-        self.assertIn('Domain Admins', high_value_names)
-        self.assertIn('Enterprise Admins', high_value_names)
+        high_value_names = [g[0] for g in result["high_value"]]
+        self.assertIn("Domain Admins", high_value_names)
+        self.assertIn("Enterprise Admins", high_value_names)
 
-        other_names = [g[0] for g in result['other']]
-        self.assertIn('Domain Users', other_names)
-        self.assertIn('IT Support', other_names)
+        other_names = [g[0] for g in result["other"]]
+        self.assertIn("Domain Users", other_names)
+        self.assertIn("IT Support", other_names)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

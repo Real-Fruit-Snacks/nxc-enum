@@ -5,6 +5,7 @@ import sys
 
 class Colors:
     """ANSI color codes for terminal output."""
+
     RESET = "\033[0m"
     GREEN = "\033[92m"
     RED = "\033[91m"
@@ -17,7 +18,7 @@ class Colors:
 
 def supports_color():
     """Check if terminal supports color."""
-    return hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()
+    return hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
 
 
 USE_COLOR = supports_color()

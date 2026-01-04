@@ -1,6 +1,6 @@
 """User and group classification utilities."""
 
-from ..core.constants import SERVICE_ACCOUNT_SUFFIXES, SERVICE_ACCOUNT_PREFIXES, HIGH_VALUE_GROUPS
+from ..core.constants import HIGH_VALUE_GROUPS, SERVICE_ACCOUNT_PREFIXES, SERVICE_ACCOUNT_SUFFIXES
 
 
 def safe_int(value: str, default: int = 9999) -> int:
@@ -25,7 +25,7 @@ def is_service_account(username: str) -> bool:
 
 def is_computer_account(username: str) -> bool:
     """Check if username is a computer account (ends with $)."""
-    return username.endswith('$')
+    return username.endswith("$")
 
 
 def is_builtin_account(rid: int) -> bool:
@@ -35,43 +35,35 @@ def is_builtin_account(rid: int) -> bool:
 
 def classify_users(users: dict) -> dict:
     """Classify users into categories for display."""
-    categories = {
-        'builtin': [],
-        'service': [],
-        'computer': [],
-        'domain': []
-    }
+    categories = {"builtin": [], "service": [], "computer": [], "domain": []}
 
-    sorted_users = sorted(users.items(), key=lambda x: safe_int(x[1].get('rid', '9999')))
+    sorted_users = sorted(users.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))
 
     for username, info in sorted_users:
-        rid = safe_int(info.get('rid', '9999'))
+        rid = safe_int(info.get("rid", "9999"))
 
         if is_builtin_account(rid):
-            categories['builtin'].append((username, info))
+            categories["builtin"].append((username, info))
         elif is_service_account(username):
-            categories['service'].append((username, info))
+            categories["service"].append((username, info))
         elif is_computer_account(username):
-            categories['computer'].append((username, info))
+            categories["computer"].append((username, info))
         else:
-            categories['domain'].append((username, info))
+            categories["domain"].append((username, info))
 
     return categories
 
 
 def classify_groups(groups: dict) -> dict:
     """Classify groups into high-value and other."""
-    categories = {
-        'high_value': [],
-        'other': []
-    }
+    categories = {"high_value": [], "other": []}
 
-    sorted_groups = sorted(groups.items(), key=lambda x: safe_int(x[1].get('rid', '9999')))
+    sorted_groups = sorted(groups.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))
 
     for groupname, info in sorted_groups:
         if groupname in HIGH_VALUE_GROUPS:
-            categories['high_value'].append((groupname, info))
+            categories["high_value"].append((groupname, info))
         else:
-            categories['other'].append((groupname, info))
+            categories["other"].append((groupname, info))
 
     return categories

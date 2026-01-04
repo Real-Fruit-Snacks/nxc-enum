@@ -2,9 +2,9 @@
 
 import re
 
-from ..core.runner import run_nxc
-from ..core.output import output, status, print_section, debug_nxc, JSON_DATA
 from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
 
 
@@ -24,48 +24,48 @@ def enum_adcs(args, cache):
     ca_names = []
     web_services = []
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         line = line.strip()
         if not line or is_nxc_noise_line(line):
             continue
 
         # Parse PKI Enrollment Server hostname
-        if 'PKI Enrollment Server:' in line:
-            server = line.split('PKI Enrollment Server:', 1)[-1].strip()
+        if "PKI Enrollment Server:" in line:
+            server = line.split("PKI Enrollment Server:", 1)[-1].strip()
             if server and server not in enrollment_servers:
                 enrollment_servers.append(server)
 
         # Parse Certificate Authority CN
-        if 'Found CN:' in line:
-            ca_name = line.split('Found CN:', 1)[-1].strip()
+        if "Found CN:" in line:
+            ca_name = line.split("Found CN:", 1)[-1].strip()
             if ca_name and ca_name not in ca_names:
                 ca_names.append(ca_name)
 
         # Parse PKI Enrollment WebService URLs (ESC8 indicator)
-        if 'PKI Enrollment WebService:' in line or 'Enrollment WebService:' in line:
-            match = re.search(r'https?://[^\s]+', line)
+        if "PKI Enrollment WebService:" in line or "Enrollment WebService:" in line:
+            match = re.search(r"https?://[^\s]+", line)
             if match:
                 url = match.group(0)
                 if url and url not in web_services:
                     web_services.append(url)
 
         # Parse Certificate Template names
-        if 'Certificate Template:' in line:
-            template = line.split('Certificate Template:', 1)[-1].strip()
+        if "Certificate Template:" in line:
+            template = line.split("Certificate Template:", 1)[-1].strip()
             if template and template not in templates:
                 templates.append(template)
-        elif 'Found Template:' in line:
-            template = line.split('Found Template:', 1)[-1].strip()
+        elif "Found Template:" in line:
+            template = line.split("Found Template:", 1)[-1].strip()
             if template and template not in templates:
                 templates.append(template)
 
     # Store in cache for other modules
     cache.adcs_templates = templates
     cache.adcs_info = {
-        'enrollment_servers': enrollment_servers,
-        'ca_names': ca_names,
-        'web_services': web_services,
-        'templates': templates
+        "enrollment_servers": enrollment_servers,
+        "ca_names": ca_names,
+        "web_services": web_services,
+        "templates": templates,
     }
 
     # Display results
@@ -85,16 +85,18 @@ def enum_adcs(args, cache):
             for url in web_services:
                 output(f"  {c(url, Colors.RED)}")
             output("")
-            output(f"  {c('[!] Web enrollment endpoints may be vulnerable to ESC8 (NTLM relay)', Colors.RED)}")
+            output(
+                f"  {c('[!] Web enrollment endpoints may be vulnerable to ESC8 (NTLM relay)', Colors.RED)}"
+            )
 
         # Add next step recommendation for certipy
-        domain = cache.domain_info.get('dns_domain', '<domain>')
-        user = args.user if args.user else '<user>'
+        domain = cache.domain_info.get("dns_domain", "<domain>")
+        user = args.user if args.user else "<user>"
         cache.add_next_step(
             finding=f"ADCS infrastructure found ({len(ca_names)} CA)",
             command=f"certipy find -u '{user}@{domain}' -p '<pass>' -dc-ip {args.target}",
             description="Check for ESC1-ESC8 certificate template vulnerabilities",
-            priority="high"
+            priority="high",
         )
 
         # Add ESC8 specific recommendation if web services found
@@ -103,7 +105,7 @@ def enum_adcs(args, cache):
                 finding="Web enrollment endpoint found (potential ESC8)",
                 command=f"certipy relay -ca {ca_names[0] if ca_names else '<ca>'} -template DomainController",
                 description="Relay NTLM auth to web enrollment for domain admin certificate",
-                priority="high"
+                priority="high",
             )
     else:
         status("No ADCS infrastructure found", "info")
@@ -112,15 +114,21 @@ def enum_adcs(args, cache):
         status(f"Found {len(templates)} Certificate Template(s):", "warning")
         for template in templates:
             # Highlight potentially dangerous templates
-            if template.lower() in ['user', 'machine', 'domaincontroller', 'webserver', 'kerberoasting']:
+            if template.lower() in [
+                "user",
+                "machine",
+                "domaincontroller",
+                "webserver",
+                "kerberoasting",
+            ]:
                 output(f"  {c(template, Colors.YELLOW)}")
             else:
                 output(f"  {c(template, Colors.CYAN)}")
 
     if args.json_output:
-        JSON_DATA['adcs'] = {
-            'enrollment_servers': enrollment_servers,
-            'ca_names': ca_names,
-            'web_services': web_services,
-            'templates': templates
+        JSON_DATA["adcs"] = {
+            "enrollment_servers": enrollment_servers,
+            "ca_names": ca_names,
+            "web_services": web_services,
+            "templates": templates,
         }

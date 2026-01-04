@@ -16,17 +16,17 @@ def validate_credentials(target: str, auth: list, cache) -> tuple[bool, bool]:
     # Combine stdout and stderr for checking (verbose output may go to either)
     combined_output = stdout + stderr
 
-    is_admin = 'Pwn3d!' in combined_output
+    is_admin = "Pwn3d!" in combined_output
 
-    if '[+]' in combined_output and 'STATUS_' not in combined_output:
+    if "[+]" in combined_output and "STATUS_" not in combined_output:
         return True, is_admin
-    elif '[-]' in combined_output and 'STATUS_LOGON_FAILURE' in combined_output.upper():
+    elif "[-]" in combined_output and "STATUS_LOGON_FAILURE" in combined_output.upper():
         status("Authentication failed - invalid credentials", "error")
         return False, False
-    elif '[-]' in combined_output:
+    elif "[-]" in combined_output:
         status("Connection failed - check target accessibility", "error")
         return False, False
-    elif 'STATUS_' in combined_output:
+    elif "STATUS_" in combined_output:
         status("Authentication failed - status error in response", "error")
         return False, False
 

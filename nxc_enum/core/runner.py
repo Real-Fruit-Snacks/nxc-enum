@@ -19,8 +19,8 @@ Security Considerations:
     - Use hash-based authentication (-H) when possible
 """
 
-import subprocess
 import socket
+import subprocess
 
 
 def run_nxc(args: list, timeout: int = 60) -> tuple[int, str, str]:
@@ -47,12 +47,7 @@ def run_nxc(args: list, timeout: int = 60) -> tuple[int, str, str]:
     if "--verbose" not in args:
         cmd.append("--verbose")
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         return -1, "", "Command timed out"

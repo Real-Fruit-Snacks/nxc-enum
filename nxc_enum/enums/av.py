@@ -2,9 +2,9 @@
 
 import re
 
-from ..core.runner import run_nxc
-from ..core.output import status, print_section, debug_nxc, JSON_DATA
 from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, debug_nxc, print_section, status
+from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
 
 
@@ -26,16 +26,16 @@ def enum_av(args, cache, is_admin: bool = True):
     av_products = []
     av_services = []  # Detailed service names from verbose/INFO output
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         # Parse detailed service names from INFO lines (verbose mode) FIRST
         # This must run BEFORE is_nxc_noise_line() which filters all INFO lines
         # Format: "INFO Detected installed service on <IP>: <Service Name>"
         # Use regex to be more specific and avoid false positives like "connection.py:67"
-        service_match = re.search(r'Detected installed service[^:]*:\s*(.+?)(?:\s*$|\s+\()', line)
+        service_match = re.search(r"Detected installed service[^:]*:\s*(.+?)(?:\s*$|\s+\()", line)
         if service_match:
             service_name = service_match.group(1).strip()
             # Filter out obviously wrong values (numbers, file paths, etc.)
-            if service_name and not service_name.isdigit() and '.py' not in service_name:
+            if service_name and not service_name.isdigit() and ".py" not in service_name:
                 if service_name not in av_services:
                     av_services.append(service_name)
             continue  # Already processed this INFO line
@@ -45,10 +45,12 @@ def enum_av(args, cache, is_admin: bool = True):
             continue
 
         # Parse summary line: "Found Windows Defender INSTALLED"
-        if 'Found' in line and ('INSTALLED' in line or 'Antivirus' in line or 'Defender' in line or 'EDR' in line):
-            found_idx = line.find('Found')
-            product_part = line[found_idx + 6:].strip()
-            product_name = product_part.replace('INSTALLED', '').strip()
+        if "Found" in line and (
+            "INSTALLED" in line or "Antivirus" in line or "Defender" in line or "EDR" in line
+        ):
+            found_idx = line.find("Found")
+            product_part = line[found_idx + 6 :].strip()
+            product_name = product_part.replace("INSTALLED", "").strip()
             if product_name and product_name not in av_products:
                 status(f"{c(product_name, Colors.YELLOW)} detected", "warning")
                 found_av = True
@@ -61,7 +63,4 @@ def enum_av(args, cache, is_admin: bool = True):
     cache.av_services = av_services  # Detailed service names if available
 
     if args.json_output:
-        JSON_DATA['av_edr'] = {
-            'products': av_products,
-            'services': av_services
-        }
+        JSON_DATA["av_edr"] = {"products": av_products, "services": av_services}

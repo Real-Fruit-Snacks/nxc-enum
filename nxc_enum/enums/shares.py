@@ -2,18 +2,22 @@
 
 import re
 
-from ..core.runner import run_nxc
-from ..core.output import output, status, print_section, debug_nxc, JSON_DATA
 from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
 
-
 # Patterns for verbose output parsing
-RE_SHARE_CHECK = re.compile(r'Checking share[:\s]+(\S+)', re.IGNORECASE)
-RE_ACCESS_DENIED = re.compile(r'(Access denied|STATUS_ACCESS_DENIED|NT_STATUS_ACCESS_DENIED)[:\s]*(.+)?', re.IGNORECASE)
-RE_SHARE_TYPE = re.compile(r'(STYPE_DISKTREE|STYPE_PRINTQ|STYPE_IPC|STYPE_DEVICE|STYPE_SPECIAL|Disk|Printer|IPC)', re.IGNORECASE)
-RE_MAX_USERS = re.compile(r'max_users[:\s]+(\d+|-?\d+)', re.IGNORECASE)
-RE_SHARE_INFO = re.compile(r'\[INFO\].*?(share|permission|access)', re.IGNORECASE)
+RE_SHARE_CHECK = re.compile(r"Checking share[:\s]+(\S+)", re.IGNORECASE)
+RE_ACCESS_DENIED = re.compile(
+    r"(Access denied|STATUS_ACCESS_DENIED|NT_STATUS_ACCESS_DENIED)[:\s]*(.+)?", re.IGNORECASE
+)
+RE_SHARE_TYPE = re.compile(
+    r"(STYPE_DISKTREE|STYPE_PRINTQ|STYPE_IPC|STYPE_DEVICE|STYPE_SPECIAL|Disk|Printer|IPC)",
+    re.IGNORECASE,
+)
+RE_MAX_USERS = re.compile(r"max_users[:\s]+(\d+|-?\d+)", re.IGNORECASE)
+RE_SHARE_INFO = re.compile(r"\[INFO\].*?(share|permission|access)", re.IGNORECASE)
 
 
 def parse_verbose_share_info(stdout: str) -> dict:
@@ -27,16 +31,16 @@ def parse_verbose_share_info(stdout: str) -> dict:
         - info_messages: list of relevant INFO lines
     """
     verbose_data = {
-        'permission_checks': [],
-        'access_errors': [],
-        'share_types': {},
-        'max_users': {},
-        'info_messages': []
+        "permission_checks": [],
+        "access_errors": [],
+        "share_types": {},
+        "max_users": {},
+        "info_messages": [],
     }
 
     current_share = None
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         line_stripped = line.strip()
         if not line_stripped:
             continue
@@ -45,15 +49,15 @@ def parse_verbose_share_info(stdout: str) -> dict:
         check_match = RE_SHARE_CHECK.search(line_stripped)
         if check_match:
             current_share = check_match.group(1)
-            verbose_data['permission_checks'].append((current_share, 'checking'))
+            verbose_data["permission_checks"].append((current_share, "checking"))
             continue
 
         # Capture access denied details
         denied_match = RE_ACCESS_DENIED.search(line_stripped)
         if denied_match:
-            detail = denied_match.group(2) if denied_match.group(2) else 'Access denied'
-            share = current_share or 'unknown'
-            verbose_data['access_errors'].append((share, detail.strip()))
+            detail = denied_match.group(2) if denied_match.group(2) else "Access denied"
+            share = current_share or "unknown"
+            verbose_data["access_errors"].append((share, detail.strip()))
             continue
 
         # Capture share type from verbose output
@@ -61,13 +65,13 @@ def parse_verbose_share_info(stdout: str) -> dict:
         if type_match and current_share:
             share_type = type_match.group(1).upper()
             # Normalize type names
-            if 'DISK' in share_type:
-                share_type = 'DISK'
-            elif 'PRINT' in share_type:
-                share_type = 'PRINTER'
-            elif 'IPC' in share_type:
-                share_type = 'IPC'
-            verbose_data['share_types'][current_share] = share_type
+            if "DISK" in share_type:
+                share_type = "DISK"
+            elif "PRINT" in share_type:
+                share_type = "PRINTER"
+            elif "IPC" in share_type:
+                share_type = "IPC"
+            verbose_data["share_types"][current_share] = share_type
             continue
 
         # Capture max users if present
@@ -75,16 +79,19 @@ def parse_verbose_share_info(stdout: str) -> dict:
         if max_match and current_share:
             try:
                 max_users = int(max_match.group(1))
-                verbose_data['max_users'][current_share] = max_users
+                verbose_data["max_users"][current_share] = max_users
             except ValueError:
                 pass
             continue
 
         # Capture relevant INFO messages
-        if RE_SHARE_INFO.search(line_stripped) or '[INFO]' in line_stripped.upper():
+        if RE_SHARE_INFO.search(line_stripped) or "[INFO]" in line_stripped.upper():
             # Filter out noise, keep share-related info
-            if any(kw in line_stripped.lower() for kw in ['share', 'permission', 'access', 'denied', 'granted']):
-                verbose_data['info_messages'].append(line_stripped)
+            if any(
+                kw in line_stripped.lower()
+                for kw in ["share", "permission", "access", "denied", "granted"]
+            ):
+                verbose_data["info_messages"].append(line_stripped)
 
     return verbose_data
 
@@ -110,80 +117,84 @@ def enum_shares(args, cache):
     shares = []
     in_share_table = False
 
-    for line in stdout.split('\n'):
+    for line in stdout.split("\n"):
         line_stripped = line.strip()
         if not line_stripped:
             continue
 
-        if 'Share' in line and 'Permissions' in line and 'Remark' in line:
+        if "Share" in line and "Permissions" in line and "Remark" in line:
             in_share_table = True
             continue
-        if '-----' in line and in_share_table:
+        if "-----" in line and in_share_table:
             continue
 
         if is_nxc_noise_line(line_stripped):
             continue
-        if '[*]' in line and 'Enumerated' in line:
+        if "[*]" in line and "Enumerated" in line:
             continue
 
-        if in_share_table or line_stripped.startswith('SMB'):
+        if in_share_table or line_stripped.startswith("SMB"):
             parts = line.split()
 
-            if '[*]' in line and 'Windows' in line:
+            if "[*]" in line and "Windows" in line:
                 continue
-            if '[+]' in line and '\\' in line and ':' in line:
+            if "[+]" in line and "\\" in line and ":" in line:
                 continue
 
             share_name = None
-            perms = 'NO ACCESS'
-            remark = ''
+            perms = "NO ACCESS"
+            remark = ""
 
-            if line_stripped.startswith('SMB'):
+            if line_stripped.startswith("SMB"):
                 try:
                     port_idx = -1
                     for i, p in enumerate(parts):
-                        if p == '445':
+                        if p == "445":
                             port_idx = i
                             break
                     if port_idx >= 0 and port_idx + 2 < len(parts):
-                        remaining_parts = parts[port_idx + 2:]
-                        if remaining_parts and not remaining_parts[0].startswith('['):
+                        remaining_parts = parts[port_idx + 2 :]
+                        if remaining_parts and not remaining_parts[0].startswith("["):
                             share_name = remaining_parts[0]
                             for i, p in enumerate(remaining_parts[1:], 1):
-                                if p in ['READ', 'WRITE', 'READ,WRITE']:
+                                if p in ["READ", "WRITE", "READ,WRITE"]:
                                     perms = p
-                                    remark = ' '.join(remaining_parts[i + 1:])
+                                    remark = " ".join(remaining_parts[i + 1 :])
                                     break
-                                elif p == 'NO' and i + 1 < len(remaining_parts) and remaining_parts[i + 1] == 'ACCESS':
-                                    perms = 'NO ACCESS'
-                                    remark = ' '.join(remaining_parts[i + 2:])
+                                elif (
+                                    p == "NO"
+                                    and i + 1 < len(remaining_parts)
+                                    and remaining_parts[i + 1] == "ACCESS"
+                                ):
+                                    perms = "NO ACCESS"
+                                    remark = " ".join(remaining_parts[i + 2 :])
                                     break
                             else:
                                 if len(remaining_parts) > 1:
-                                    remark = ' '.join(remaining_parts[1:])
+                                    remark = " ".join(remaining_parts[1:])
                 except (ValueError, IndexError):
                     pass
             else:
                 if parts:
                     share_name = parts[0]
                     for i, p in enumerate(parts[1:], 1):
-                        if p in ['READ', 'WRITE', 'READ,WRITE']:
+                        if p in ["READ", "WRITE", "READ,WRITE"]:
                             perms = p
-                            remark = ' '.join(parts[i + 1:])
+                            remark = " ".join(parts[i + 1 :])
                             break
-                        elif p == 'NO' and i + 1 < len(parts) and parts[i + 1] == 'ACCESS':
-                            perms = 'NO ACCESS'
-                            remark = ' '.join(parts[i + 2:])
+                        elif p == "NO" and i + 1 < len(parts) and parts[i + 1] == "ACCESS":
+                            perms = "NO ACCESS"
+                            remark = " ".join(parts[i + 2 :])
                             break
                     else:
                         if len(parts) > 1:
-                            remark = ' '.join(parts[1:])
+                            remark = " ".join(parts[1:])
 
             if share_name and share_name not in [s[0] for s in shares]:
-                if share_name not in ('Share', '-----', '[*]', '[+]'):
+                if share_name not in ("Share", "-----", "[*]", "[+]"):
                     # Enrich with verbose data
-                    share_type = verbose_info['share_types'].get(share_name, '')
-                    max_users = verbose_info['max_users'].get(share_name)
+                    share_type = verbose_info["share_types"].get(share_name, "")
+                    max_users = verbose_info["max_users"].get(share_name)
                     shares.append((share_name, perms, remark, share_type, max_users))
 
     if shares:
@@ -193,16 +204,18 @@ def enum_shares(args, cache):
         cache.share_verbose_info = verbose_info
 
         # Separate accessible vs no-access shares (handle 5-tuple format)
-        accessible = [(n, p, r, t, m) for n, p, r, t, m in shares if 'READ' in p or 'WRITE' in p]
-        no_access = [(n, p, r, t, m) for n, p, r, t, m in shares if 'READ' not in p and 'WRITE' not in p]
+        accessible = [(n, p, r, t, m) for n, p, r, t, m in shares if "READ" in p or "WRITE" in p]
+        no_access = [
+            (n, p, r, t, m) for n, p, r, t, m in shares if "READ" not in p and "WRITE" not in p
+        ]
 
         status(f"Found {len(shares)} share(s)", "success")
         output("")
 
         # Show verbose access errors if any were captured
-        if verbose_info['access_errors']:
+        if verbose_info["access_errors"]:
             unique_errors = {}
-            for share, error in verbose_info['access_errors']:
+            for share, error in verbose_info["access_errors"]:
                 if share not in unique_errors:
                     unique_errors[share] = error
             if unique_errors:
@@ -223,23 +236,23 @@ def enum_shares(args, cache):
                 output(f"{'-'*15} {'-'*12} {'-'*30}")
 
             for share_name, perms, remark, share_type, max_users in accessible:
-                if 'READ' in perms and 'WRITE' in perms:
+                if "READ" in perms and "WRITE" in perms:
                     access_padded = "READ,WRITE".ljust(12)
                     access_str = c(access_padded, Colors.GREEN)
-                elif 'WRITE' in perms:
+                elif "WRITE" in perms:
                     access_padded = "WRITE".ljust(12)
                     access_str = c(access_padded, Colors.GREEN)
                 else:
                     access_padded = "READ".ljust(12)
                     access_str = c(access_padded, Colors.GREEN)
 
-                comment = remark if remark else ''
+                comment = remark if remark else ""
                 max_comment_len = 25 if has_types else 30
                 if len(comment) > max_comment_len:
-                    comment = comment[:max_comment_len - 3] + '...'
+                    comment = comment[: max_comment_len - 3] + "..."
 
                 if has_types:
-                    type_str = (share_type or '-').ljust(8)
+                    type_str = (share_type or "-").ljust(8)
                     output(f"{share_name:<15} {access_str} {type_str} {comment}")
                 else:
                     output(f"{share_name:<15} {access_str} {comment}")
@@ -256,47 +269,47 @@ def enum_shares(args, cache):
                 output(f"{'-'*15} {'-'*30}")
 
             for share_name, perms, remark, share_type, max_users in no_access:
-                comment = remark if remark else ''
+                comment = remark if remark else ""
                 max_comment_len = 25 if has_types else 30
                 if len(comment) > max_comment_len:
-                    comment = comment[:max_comment_len - 3] + '...'
+                    comment = comment[: max_comment_len - 3] + "..."
                 share_padded = share_name.ljust(15)
                 if has_types:
-                    type_str = (share_type or '-').ljust(8)
+                    type_str = (share_type or "-").ljust(8)
                     output(f"{c(share_padded, Colors.RED)} {type_str} {comment}")
                 else:
                     output(f"{c(share_padded, Colors.RED)} {comment}")
 
         # Display relevant verbose INFO messages if any
-        if verbose_info['info_messages']:
+        if verbose_info["info_messages"]:
             output("")
             output(c("VERBOSE INFO:", Colors.CYAN))
-            for msg in verbose_info['info_messages'][:5]:  # Limit to first 5
+            for msg in verbose_info["info_messages"][:5]:  # Limit to first 5
                 # Clean up the message for display
-                clean_msg = msg.replace('[INFO]', '').strip()
+                clean_msg = msg.replace("[INFO]", "").strip()
                 if clean_msg:
                     output(f"  {clean_msg}")
 
         if args.json_output:
             # Include verbose data in JSON output
-            JSON_DATA['shares'] = [
+            JSON_DATA["shares"] = [
                 {
-                    'name': s[0],
-                    'permissions': s[1],
-                    'comment': s[2],
-                    'type': s[3] if s[3] else None,
-                    'max_users': s[4]
+                    "name": s[0],
+                    "permissions": s[1],
+                    "comment": s[2],
+                    "type": s[3] if s[3] else None,
+                    "max_users": s[4],
                 }
                 for s in shares
             ]
             # Add verbose metadata to JSON
-            if verbose_info['access_errors']:
-                JSON_DATA['share_access_errors'] = [
-                    {'share': share, 'error': error}
-                    for share, error in verbose_info['access_errors']
+            if verbose_info["access_errors"]:
+                JSON_DATA["share_access_errors"] = [
+                    {"share": share, "error": error}
+                    for share, error in verbose_info["access_errors"]
                 ]
     else:
         status("Share enumeration output:", "info")
-        for line in stdout.split('\n'):
+        for line in stdout.split("\n"):
             if line.strip():
                 output(f"  {line.strip()}")

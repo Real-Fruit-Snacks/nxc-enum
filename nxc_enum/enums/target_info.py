@@ -1,7 +1,7 @@
 """Target information display."""
 
-from ..core.output import output, status, print_section, JSON_DATA
 from ..core.colors import Colors, c
+from ..core.output import JSON_DATA, output, print_section, status
 
 
 def enum_target_info(args, creds: list = None):
@@ -43,16 +43,16 @@ def enum_target_info(args, creds: list = None):
 
     if args.json_output:
         if creds and len(creds) > 1:
-            JSON_DATA['target'] = {
-                'ip': args.target,
-                'credentials': [c.display_name() for c in creds],
-                'domain': args.domain,
-                'timeout': args.timeout
+            JSON_DATA["target"] = {
+                "ip": args.target,
+                "credentials": [c.display_name() for c in creds],
+                "domain": args.domain,
+                "timeout": args.timeout,
             }
         else:
-            JSON_DATA['target'] = {
-                'ip': args.target,
-                'user': args.user,
-                'domain': args.domain,
-                'timeout': args.timeout
+            JSON_DATA["target"] = {
+                "ip": args.target,
+                "user": args.user,
+                "domain": args.domain,
+                "timeout": args.timeout,
             }
