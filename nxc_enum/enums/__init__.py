@@ -1,12 +1,6 @@
 """Enumeration modules - each function in its own file."""
 
 # Core enumeration
-from .domain_intel import enum_domain_intelligence
-from .listeners import enum_listeners
-from .target_info import enum_target_info
-
-# Alias for shorter import
-enum_domain_intel = enum_domain_intelligence
 from .adcs import enum_adcs
 from .admin_count import enum_admin_count
 from .av import enum_av
@@ -17,8 +11,10 @@ from .dc_list import enum_dc_list
 from .delegation import enum_delegation
 from .descriptions import enum_descriptions
 from .dns import enum_dns
+from .domain_intel import enum_domain_intelligence
 from .groups import enum_groups, get_group_members
 from .kerberoastable import enum_kerberoastable
+from .listeners import enum_listeners
 from .loggedon import enum_loggedon
 from .loggedon_multi import enum_loggedon_multi
 from .maq import enum_maq
@@ -40,10 +36,14 @@ from .shares import enum_shares
 from .shares_multi import enum_shares_multi
 from .signing import enum_signing
 from .smb_info import enum_smb_info
+from .target_info import enum_target_info
 
 # User/Group enumeration
 from .users import enum_users
 from .webdav import enum_webdav
+
+# Alias for shorter import
+enum_domain_intel = enum_domain_intelligence
 
 __all__ = [
     # Core

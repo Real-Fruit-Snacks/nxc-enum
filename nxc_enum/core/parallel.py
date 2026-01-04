@@ -8,7 +8,6 @@ from .output import (
     _buffer_lock,
     get_output_file_requested,
     get_thread_local,
-    output,
     set_parallel_mode,
     status,
 )

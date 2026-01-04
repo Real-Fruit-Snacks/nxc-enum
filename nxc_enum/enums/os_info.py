@@ -82,11 +82,7 @@ def parse_verbose_os_info(stdout: str, stderr: str) -> dict:
 
         # Parse OS edition
         if not verbose_data["edition"]:
-            edition_match = (
-                RE_EDITION.search(line_stripped)
-                if "RE_EDITION" in dir()
-                else RE_OS_EDITION.search(line_stripped)
-            )
+            edition_match = RE_OS_EDITION.search(line_stripped)
             if edition_match:
                 verbose_data["edition"] = edition_match.group(1)
 

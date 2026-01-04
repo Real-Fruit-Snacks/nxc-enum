@@ -328,7 +328,7 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
     status("Gathering from SMB...")
     rc, stdout, stderr = cache.get_smb_basic(args.target, auth)
     if stdout:
-        name_match = RE_NAME.search(stdout)
+        _name_match = RE_NAME.search(stdout)  # noqa: F841 - parsed but hostname used instead
         domain_match = RE_DOMAIN.search(stdout)
         hostname_match = RE_HOSTNAME.search(stdout)
 

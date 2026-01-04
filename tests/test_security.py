@@ -8,13 +8,13 @@ import stat
 import sys
 import tempfile
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from nxc_enum.core.output import _REDACTED, _SENSITIVE_ARGS, _sanitize_cmd_args
-from nxc_enum.models.credential import Credential, CredentialError
-from nxc_enum.parsing.credentials import _check_file_permissions
+from nxc_enum.core.output import _REDACTED, _sanitize_cmd_args  # noqa: E402
+from nxc_enum.models.credential import Credential, CredentialError  # noqa: E402
+from nxc_enum.parsing.credentials import _check_file_permissions  # noqa: E402
 
 
 class TestCredentialSanitization(unittest.TestCase):

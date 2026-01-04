@@ -1,13 +1,11 @@
 """Logged-on users enumeration (multi-credential)."""
 
-import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, output, print_section, status
 from ..core.runner import run_nxc
-from ..parsing.nxc_output import is_nxc_noise_line
 
 # Import verbose parsing from single-cred module
 from .loggedon import parse_loggedon_verbose

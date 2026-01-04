@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from nxc_enum.parsing.classify import (
+from nxc_enum.parsing.classify import (  # noqa: E402
     classify_groups,
     classify_users,
     is_builtin_account,
@@ -14,7 +14,7 @@ from nxc_enum.parsing.classify import (
     is_service_account,
     safe_int,
 )
-from nxc_enum.parsing.nxc_output import (
+from nxc_enum.parsing.nxc_output import (  # noqa: E402
     extract_after_port,
     extract_status_content,
     find_port_index,

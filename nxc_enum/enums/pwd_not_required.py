@@ -94,7 +94,7 @@ def parse_verbose_info(stdout: str) -> dict:
         if not line:
             continue
 
-        current_user = None
+        _current_user = None  # noqa: F841 - reserved for multi-line parsing
 
         # Parse UAC value from INFO lines
         uac_match = RE_UAC_INFO.search(line)
@@ -107,7 +107,7 @@ def parse_verbose_info(stdout: str) -> dict:
                 accounts_info[username]["uac_value"] = uac_value
                 accounts_info[username]["uac_flags"] = decode_uac_flags(uac_value)
                 accounts_info[username]["is_disabled"] = bool(uac_value & 0x0002)
-                current_user = username
+                _current_user = username  # noqa: F841
             except ValueError:
                 pass
 
@@ -125,7 +125,7 @@ def parse_verbose_info(stdout: str) -> dict:
                 if "uac_flags" not in accounts_info[username]:
                     accounts_info[username]["uac_flags"] = []
                 accounts_info[username]["uac_flags"].extend(flags)
-                current_user = username
+                _current_user = username  # noqa: F841
 
         # Parse account enabled/disabled status
         status_match = RE_INFO_STATUS.search(line)

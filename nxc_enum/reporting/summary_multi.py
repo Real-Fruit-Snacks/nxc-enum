@@ -15,7 +15,7 @@ def print_executive_summary_multi(args, cache, creds, results):
     # Target Profile
     output(c("TARGET PROFILE", Colors.CYAN + Colors.BOLD))
     output("-" * 50)
-    hostname = domain_info.get("hostname", "Unknown")
+    _hostname = domain_info.get("hostname", "Unknown")  # noqa: F841 - available for future use
     fqdn = domain_info.get("fqdn", "")
     target_str = f"{args.target}"
     if fqdn:
@@ -24,7 +24,7 @@ def print_executive_summary_multi(args, cache, creds, results):
     if domain_info.get("is_dc"):
         output(f"  Role:        {c('Domain Controller', Colors.RED)}")
     else:
-        output(f"  Role:        Member Server")
+        output("  Role:        Member Server")
     output(f"  Domain:      {domain_info.get('dns_domain', 'Unknown')}")
     output(f"  Domain SID:  {domain_info.get('domain_sid', 'Unknown')}")
     output("")
@@ -75,7 +75,7 @@ def print_executive_summary_multi(args, cache, creds, results):
             f"[!] Lockout Threshold: {c('NONE', Colors.RED)} - {c('Password spraying safe!', Colors.RED)}"
         )
     elif lockout == "Unknown":
-        output(f"[*] Lockout Threshold: Unknown")
+        output("[*] Lockout Threshold: Unknown")
     else:
         output(f"[+] Lockout Threshold: {c(str(lockout), Colors.GREEN)}")
 

@@ -71,7 +71,7 @@ def validate_credentials_multi(
             "success",
         )
     else:
-        status(f"No valid credentials found!", "error")
+        status("No valid credentials found!", "error")
 
     # Sort so admin credentials come first - ensures creds[0] is admin if one exists
     # This is important because creds[0] is used for all one-time cached operations

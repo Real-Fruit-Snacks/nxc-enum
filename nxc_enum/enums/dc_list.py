@@ -510,7 +510,7 @@ def _print_trust_details(trust_details: list, cache):
                     f"    SID History: {c('ENABLED', Colors.YELLOW)} {c('(Potential for abuse)', Colors.YELLOW)}"
                 )
             else:
-                output(f"    SID History: Disabled")
+                output("    SID History: Disabled")
 
         if trust.get("attributes"):
             output(f"    Attributes: {trust['attributes']}")

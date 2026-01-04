@@ -53,7 +53,7 @@ def parse_loggedon_verbose(stdout: str) -> dict:
     """
     users = []
     sessions = []
-    current_session = {}
+    _current_session = {}  # noqa: F841 - reserved for future session tracking
 
     for line in stdout.split("\n"):
         line_stripped = line.strip()
@@ -211,7 +211,7 @@ def enum_loggedon(args, cache, is_admin: bool = True):
                 if user_part in ["administrator", "admin"]:
                     cache.add_next_step(
                         f"Domain admin '{user}' logged on to {args.target}",
-                        f"# Consider credential harvesting with Mimikatz",
+                        "# Consider credential harvesting with Mimikatz",
                         "High-value target for credential theft",
                         priority="high",
                     )

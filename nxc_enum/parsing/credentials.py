@@ -84,13 +84,15 @@ def parse_credentials(args) -> list[Credential]:
         # Pair users and passwords line by line
         try:
             with open(args.userfile, encoding="utf-8-sig") as uf:
-                users = [l.strip() for l in uf if l.strip() and not l.startswith("#")]
+                users = [ln.strip() for ln in uf if ln.strip() and not ln.startswith("#")]
             with open(args.passfile, encoding="utf-8-sig") as pf:
-                passwords = [l.strip() for l in pf if l.strip() and not l.startswith("#")]
+                passwords = [ln.strip() for ln in pf if ln.strip() and not ln.startswith("#")]
             # Warn before processing if counts don't match
             if len(users) != len(passwords):
+                min_count = min(len(users), len(passwords))
                 print(
-                    f"Warning: User count ({len(users)}) != password count ({len(passwords)}), pairing will be truncated to {min(len(users), len(passwords))}"
+                    f"Warning: User count ({len(users)}) != password count "
+                    f"({len(passwords)}), pairing will be truncated to {min_count}"
                 )
             for user, password in zip(users, passwords):
                 creds.append(Credential(user=user, password=password, domain=args.domain))

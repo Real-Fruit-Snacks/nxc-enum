@@ -67,8 +67,6 @@ def output(msg: str):
     Thread-safe: Uses lock when appending to OUTPUT_BUFFER to prevent
     race conditions during parallel module execution.
     """
-    global _parallel_mode, _output_file_requested
-
     if _parallel_mode and hasattr(_thread_local, "buffer"):
         _thread_local.buffer.append(msg)
     else:

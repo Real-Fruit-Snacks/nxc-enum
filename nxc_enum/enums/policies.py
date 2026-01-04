@@ -259,7 +259,6 @@ def enum_policies(args, cache):
         )
 
         # Add password spraying recommendation
-        domain = cache.domain_info.get("dns_domain", "<domain>")
         cache.add_next_step(
             finding="No account lockout policy",
             command=f"nxc smb {args.target} -u users.txt -p passwords.txt --continue-on-success",
