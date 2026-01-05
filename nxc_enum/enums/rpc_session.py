@@ -181,7 +181,7 @@ def enum_rpc_session(args, cache):
 
     # Check null session
     status("Check for anonymous access (null session)")
-    null_args = ["smb", args.target, "-u", "''", "-p", "''"]
+    null_args = ["smb", args.target, "-u", "", "-p", ""]
     null_success, null_verbose, null_stdout, _ = check_session(
         args, "null", null_args, "Null Session"
     )
@@ -237,7 +237,7 @@ def enum_rpc_session(args, cache):
 
     # Check guest session
     status("Check for guest access")
-    guest_args = ["smb", args.target, "-u", "guest", "-p", "''"]
+    guest_args = ["smb", args.target, "-u", "guest", "-p", ""]
     guest_success, guest_verbose, guest_stdout, _ = check_session(
         args, "guest", guest_args, "Guest Session"
     )
@@ -249,8 +249,22 @@ def enum_rpc_session(args, cache):
         # Note if guest flag was explicitly detected in verbose output
         if guest_verbose["auth_info"].get("guest_flag"):
             status("  Guest account is enabled", "info")
-    elif "STATUS_LOGON_FAILURE" in guest_stdout.upper() or "[-]" in guest_stdout:
-        status("Could not establish guest session: STATUS_LOGON_FAILURE", "error")
+    elif "[-]" in guest_stdout:
+        # Parse actual NTSTATUS from output for accurate error message
+        guest_upper = guest_stdout.upper()
+        if "STATUS_ACCOUNT_DISABLED" in guest_upper:
+            status("Guest account is disabled", "info")
+        elif "STATUS_LOGON_FAILURE" in guest_upper:
+            status("Could not establish guest session: STATUS_LOGON_FAILURE", "error")
+        elif "STATUS_ACCESS_DENIED" in guest_upper:
+            status("Could not establish guest session: STATUS_ACCESS_DENIED", "error")
+        else:
+            # Show any detected status codes
+            if guest_verbose["status_codes"]:
+                code_str = ", ".join(guest_verbose["status_codes"][:2])
+                status(f"Could not establish guest session: {code_str}", "error")
+            else:
+                status("Could not establish guest session", "error")
     else:
         status("Guest session status unclear", "warning")
         # Show any status codes for debugging

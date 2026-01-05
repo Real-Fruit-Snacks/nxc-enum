@@ -10,9 +10,10 @@ from ..core.runner import run_nxc
 _lock = threading.Lock()
 
 
-def enum_av_multi(args, creds: list, results):
+def enum_av_multi(args, creds: list, results, cache=None):
     """Enumerate AV/EDR for multiple credentials (requires local admin)."""
-    print_section("AV/EDR Detection", args.target)
+    target = cache.target if cache else args.target
+    print_section("AV/EDR Detection", target)
 
     admin_creds = [cred for cred in creds if cred.is_admin]
     if not admin_creds:
@@ -22,9 +23,9 @@ def enum_av_multi(args, creds: list, results):
 
     non_admin_count = len(creds) - len(admin_creds)
     if non_admin_count > 0:
-        status(
-            f"Running for {len(admin_creds)} admin user(s), skipping {non_admin_count} non-admin user(s)"
-        )
+        msg = f"Running for {len(admin_creds)} admin user(s), "
+        msg += f"skipping {non_admin_count} non-admin user(s)"
+        status(msg)
         results.av_skipped = [cred.display_name() for cred in creds if not cred.is_admin]
     else:
         status(f"Checking for security products with {len(admin_creds)} admin user(s)...")
@@ -32,7 +33,7 @@ def enum_av_multi(args, creds: list, results):
 
     def get_av_for_cred(cred):
         auth = cred.auth_args()
-        av_args = ["smb", args.target] + auth + ["-M", "enum_av"]
+        av_args = ["smb", target] + auth + ["-M", "enum_av"]
         rc, stdout, stderr = run_nxc(av_args, args.timeout)
         debug_nxc(av_args, stdout, stderr, f"AV/EDR ({cred.display_name()})")
 

@@ -155,9 +155,11 @@ def enum_shares(args, cache):
                     if port_idx >= 0 and port_idx + 2 < len(parts):
                         remaining_parts = parts[port_idx + 2 :]
                         if remaining_parts and not remaining_parts[0].startswith("["):
-                            share_name = remaining_parts[0]
-                            for i, p in enumerate(remaining_parts[1:], 1):
+                            # Find permission keyword to determine where share name ends
+                            perm_idx = -1
+                            for i, p in enumerate(remaining_parts):
                                 if p in ["READ", "WRITE", "READ,WRITE"]:
+                                    perm_idx = i
                                     perms = p
                                     remark = " ".join(remaining_parts[i + 1 :])
                                     break
@@ -166,27 +168,49 @@ def enum_shares(args, cache):
                                     and i + 1 < len(remaining_parts)
                                     and remaining_parts[i + 1] == "ACCESS"
                                 ):
+                                    perm_idx = i
                                     perms = "NO ACCESS"
                                     remark = " ".join(remaining_parts[i + 2 :])
                                     break
+
+                            if perm_idx > 0:
+                                # Share name is everything before the permission keyword
+                                share_name = " ".join(remaining_parts[:perm_idx])
+                            elif perm_idx == 0:
+                                # Permission at start means no share name parsed (skip)
+                                share_name = None
                             else:
+                                # No permission found - first part is share name, rest is remark
+                                share_name = remaining_parts[0]
                                 if len(remaining_parts) > 1:
                                     remark = " ".join(remaining_parts[1:])
                 except (ValueError, IndexError):
                     pass
             else:
                 if parts:
-                    share_name = parts[0]
-                    for i, p in enumerate(parts[1:], 1):
+                    # Find permission keyword to determine where share name ends
+                    perm_idx = -1
+                    for i, p in enumerate(parts):
                         if p in ["READ", "WRITE", "READ,WRITE"]:
+                            perm_idx = i
                             perms = p
                             remark = " ".join(parts[i + 1 :])
                             break
                         elif p == "NO" and i + 1 < len(parts) and parts[i + 1] == "ACCESS":
+                            perm_idx = i
                             perms = "NO ACCESS"
                             remark = " ".join(parts[i + 2 :])
                             break
+
+                    if perm_idx > 0:
+                        # Share name is everything before the permission keyword
+                        share_name = " ".join(parts[:perm_idx])
+                    elif perm_idx == 0:
+                        # Permission at start means no share name parsed (skip)
+                        share_name = None
                     else:
+                        # No permission found - first part is share name, rest is remark
+                        share_name = parts[0]
                         if len(parts) > 1:
                             remark = " ".join(parts[1:])
 
@@ -313,7 +337,8 @@ def enum_shares(args, cache):
         if accessible:
             # Filter out IPC$ and PRINT$ shares - only suggest spidering file shares
             file_shares = [
-                name for name, perms, _, stype, _ in accessible
+                name
+                for name, perms, _, stype, _ in accessible
                 if "READ" in perms
                 and name.upper() not in ("IPC$", "PRINT$")
                 and (not stype or "IPC" not in stype.upper())
@@ -323,22 +348,31 @@ def enum_shares(args, cache):
                 if len(file_shares) > 3:
                     share_list += f" (+{len(file_shares) - 3} more)"
                 # Enumerate shares (JSON metadata)
+                # MAX_FILE_SIZE=10485760 (10MB) - default 50KB is too small
+                spider_cmd = (
+                    f"nxc smb {args.target} -u <user> -p <pass> "
+                    "-M spider_plus -o OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760"
+                )
                 cache.add_next_step(
                     finding=f"Readable shares: {share_list}",
-                    command=f"nxc smb {args.target} -u <user> -p <pass> -M spider_plus -o OUTPUT_FOLDER=.",
-                    description="Enumerate share contents (creates JSON metadata in current dir)",
+                    command=spider_cmd,
+                    description="Enumerate share contents (creates JSON metadata)",
                     priority="low",
                 )
                 # Download files from shares
+                download_cmd = (
+                    f"nxc smb {args.target} -u <user> -p <pass> "
+                    "-M spider_plus -o DOWNLOAD_FLAG=True OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760"
+                )
                 cache.add_next_step(
                     finding=f"Readable shares: {share_list}",
-                    command=f"nxc smb {args.target} -u <user> -p <pass> -M spider_plus -o DOWNLOAD_FLAG=True OUTPUT_FOLDER=.",
-                    description="Download files from shares to current directory",
+                    command=download_cmd,
+                    description="Download files from shares (up to 10MB each)",
                     priority="low",
                 )
 
-        # Print copyable share list
-        _print_share_list(shares, args)
+        # Store share names for aggregated copy-paste section
+        cache.copy_paste_data["share_names"].update(s[0] for s in shares)
     else:
         # No shares parsed - check for access denied or other errors
         combined = stdout + stderr
@@ -348,15 +382,3 @@ def enum_shares(args, cache):
             status("Authentication failed - cannot enumerate shares", "error")
         else:
             status("No shares found or unable to enumerate", "warning")
-
-
-def _print_share_list(shares: list, args):
-    """Print a simple list of share names for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not shares:
-        return
-
-    output("")
-    output(c("Share Names (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for share_name, _, _, _, _ in sorted(shares, key=lambda x: x[0].lower()):
-        output(share_name)

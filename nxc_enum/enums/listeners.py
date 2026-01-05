@@ -6,9 +6,10 @@ from ..core.output import JSON_DATA, print_section, status
 from ..core.runner import check_port
 
 
-def enum_listeners(args, listener_results: dict):
+def enum_listeners(args, listener_results: dict, cache=None):
     """Scan for open ports in parallel."""
-    print_section("Listener Scan", args.target)
+    target = cache.target if cache else args.target
+    print_section("Listener Scan", target)
 
     ports = [
         (389, "LDAP"),
@@ -19,7 +20,7 @@ def enum_listeners(args, listener_results: dict):
 
     def check_single_port(port_info):
         port, name = port_info
-        is_open = check_port(args.target, port)
+        is_open = check_port(target, port)
         return (name, port, is_open)
 
     # Run all port checks in parallel

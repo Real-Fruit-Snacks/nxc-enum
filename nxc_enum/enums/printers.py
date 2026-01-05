@@ -11,7 +11,7 @@ from ..parsing.nxc_output import is_nxc_noise_line
 RE_SPOOLER_STATUS = re.compile(
     r"(Spooler|Print Spooler)[:\s]*(enabled|disabled|running|stopped)", re.IGNORECASE
 )
-# Match printer names but NOT SMB banner lines like "(name:DC01)" - require space before colon or full keyword
+# Match printer names but NOT SMB banner lines like "(name:DC01)"
 RE_PRINTER_NAME = re.compile(
     r"(?:^|[\s\[])(?:Printer|PrinterName|Printer Name|Name)\s*:\s*([^\(\)]+?)(?:\s*$|\s+[A-Z])",
     re.IGNORECASE,
@@ -148,7 +148,10 @@ def enum_printers(args, cache):
         if is_nxc_noise_line(line):
             continue
         if "Spooler" in line and "enabled" in line.lower():
-            status("Print spooler service is running", "warning")
+            status(
+                "Print spooler running - potential PrintNightmare (CVE-2021-34527) target!",
+                "warning",
+            )
             found_printers = True
             printers.append("Spooler enabled")
             cache.spooler_running = True

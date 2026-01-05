@@ -58,9 +58,11 @@ def enum_maq(args, cache):
 
             # Add machine account abuse recommendation
             domain = cache.domain_info.get("dns_domain", "<domain>")
+            cmd = "addcomputer.py -computer-name 'YOURPC$' -computer-pass 'Password123!'"
+            cmd += f" '{domain}/<user>:<pass>'"
             cache.add_next_step(
                 finding=f"Machine Account Quota is {quota}",
-                command=f"addcomputer.py -computer-name 'YOURPC$' -computer-pass 'Password123!' '{domain}/<user>:<pass>'",
+                command=cmd,
                 description="Add a machine account for RBCD or other attacks",
                 priority="medium",
             )

@@ -232,9 +232,9 @@ def enum_policies(args, cache):
     try:
         min_len_int = int(min_len)
         if min_len_int < 8:
-            output(
-                f"  Minimum password length: {c(min_len, Colors.YELLOW)} {c('← Weak!', Colors.YELLOW)}"
-            )
+            msg = f"  Minimum password length: {c(min_len, Colors.YELLOW)}"
+            msg += f" {c('← Weak!', Colors.YELLOW)}"
+            output(msg)
         else:
             output(f"  Minimum password length: {c(min_len, Colors.GREEN)}")
     except ValueError:
@@ -254,9 +254,9 @@ def enum_policies(args, cache):
 
     lockout = policies.get("Lockout threshold") or "None"
     if lockout == "None" or lockout == "0" or not lockout:
-        output(
-            f"  Lockout threshold: {c('None', Colors.YELLOW)} {c('← Password spraying safe!', Colors.YELLOW)}"
-        )
+        msg = f"  Lockout threshold: {c('None', Colors.YELLOW)}"
+        msg += f" {c('← Password spraying safe!', Colors.YELLOW)}"
+        output(msg)
 
         # Add password spraying recommendation
         cache.add_next_step(
@@ -363,9 +363,9 @@ def _print_verbose_policy_info(verbose_info: dict, cache):
 
     # Clear text passwords (security concern)
     if verbose_info.get("clear_text_passwords"):
-        output(
-            f"  Reversible Encryption: {c('ENABLED', Colors.RED)} {c('← Security Risk!', Colors.RED)}"
-        )
+        enabled_str = c("ENABLED", Colors.RED)
+        risk_str = c("← Security Risk!", Colors.RED)
+        output(f"  Reversible Encryption: {enabled_str} {risk_str}")
     elif verbose_info.get("clear_text_passwords") is False:
         output(f"  Reversible Encryption: {c('Disabled', Colors.GREEN)}")
 
@@ -376,6 +376,38 @@ def _print_verbose_policy_info(verbose_info: dict, cache):
     # Force logoff
     if verbose_info.get("force_logoff"):
         output(f"  Force Logoff: {verbose_info['force_logoff']}")
+
+    # Password properties flags (decode hex value if available)
+    if verbose_info.get("password_properties"):
+        props_raw = verbose_info["password_properties"]
+        output(f"  Password Properties: {props_raw}")
+        # Try to decode common flag values
+        try:
+            props_val = int(props_raw, 16) if props_raw.startswith("0x") else int(props_raw)
+            flags = []
+            # Common password property flags from MS docs
+            if props_val & 0x01:
+                flags.append("DOMAIN_PASSWORD_COMPLEX")
+            if props_val & 0x02:
+                flags.append("DOMAIN_PASSWORD_NO_ANON_CHANGE")
+            if props_val & 0x04:
+                flags.append("DOMAIN_PASSWORD_NO_CLEAR_CHANGE")
+            if props_val & 0x08:
+                flags.append("DOMAIN_LOCKOUT_ADMINS")
+            if props_val & 0x10:
+                flags.append("DOMAIN_PASSWORD_STORE_CLEARTEXT")
+            if props_val & 0x20:
+                flags.append("DOMAIN_REFUSE_PASSWORD_CHANGE")
+            if flags:
+                output(f"    Decoded flags: {', '.join(flags)}")
+                # Highlight security concerns
+                if props_val & 0x10:  # Store cleartext
+                    output(c("    WARNING: DOMAIN_PASSWORD_STORE_CLEARTEXT enabled!", Colors.RED))
+                if props_val & 0x08:  # Lockout admins
+                    lockout_msg = "NOTE: DOMAIN_LOCKOUT_ADMINS - Admins can be locked out"
+                    output(c(f"    {lockout_msg}", Colors.YELLOW))
+        except (ValueError, TypeError):
+            pass
 
     # Fine-grained password policies
     if verbose_info.get("fine_grained_policies"):

@@ -6,7 +6,8 @@ from ..core.output import output, print_section
 
 def print_executive_summary(args, cache):
     """Print executive summary with key findings and warnings."""
-    print_section("Executive Summary", args.target)
+    target = cache.target if cache else args.target
+    print_section("Executive Summary", target)
 
     domain_info = cache.domain_info or {}
     smb_info = cache.smb_info or {}
@@ -26,7 +27,7 @@ def print_executive_summary(args, cache):
     target_desc = f"{hostname}"
     if fqdn:
         target_desc = fqdn
-    output(f"  Target:      {args.target} ({target_desc})")
+    output(f"  Target:      {target} ({target_desc})")
     if is_dc:
         output(f"  Role:        {c('Domain Controller', Colors.BOLD)}")
     if dns_domain:
@@ -44,9 +45,9 @@ def print_executive_summary(args, cache):
     if signing:
         output(f"[+] SMB Signing: {c('REQUIRED', Colors.GREEN)}")
     else:
-        output(
-            f"[!] SMB Signing: {c('NOT REQUIRED', Colors.RED)} - {c('Relay attacks possible!', Colors.RED)}"
-        )
+        msg = f"[!] SMB Signing: {c('NOT REQUIRED', Colors.RED)}"
+        msg += f" - {c('Relay attacks possible!', Colors.RED)}"
+        output(msg)
 
     # Password Policy
     min_len = policy_info.get("Minimum password length", "Unknown")
@@ -56,9 +57,9 @@ def print_executive_summary(args, cache):
         try:
             min_len_int = int(min_len)
             if min_len_int < 8:
-                output(
-                    f"[!] Min Password Length: {c(f'{min_len} chars', Colors.RED)} {c('(weak)', Colors.RED)}"
-                )
+                msg = f"[!] Min Password Length: {c(f'{min_len} chars', Colors.RED)}"
+                msg += f" {c('(weak)', Colors.RED)}"
+                output(msg)
             else:
                 output(f"[+] Min Password Length: {c(f'{min_len} chars', Colors.GREEN)}")
         except ValueError:
@@ -67,17 +68,17 @@ def print_executive_summary(args, cache):
         output(f"[*] Min Password Length: {min_len}")
 
     if lockout == "None" or lockout == "0" or not lockout:
-        output(
-            f"[!] Lockout Threshold: {c('NONE', Colors.RED)} - {c('Password spraying safe!', Colors.RED)}"
-        )
+        msg = f"[!] Lockout Threshold: {c('NONE', Colors.RED)}"
+        msg += f" - {c('Password spraying safe!', Colors.RED)}"
+        output(msg)
     else:
         output(f"[+] Lockout Threshold: {c(str(lockout), Colors.GREEN)}")
 
     # Print Spooler
     if cache.spooler_running:
-        output(
-            f"[!] Print Spooler: {c('RUNNING', Colors.RED)} - {c('Check for PrintNightmare!', Colors.RED)}"
-        )
+        msg = f"[!] Print Spooler: {c('RUNNING', Colors.RED)}"
+        msg += f" - {c('Check for PrintNightmare!', Colors.RED)}"
+        output(msg)
     else:
         output(f"[+] Print Spooler: {c('Not detected', Colors.GREEN)}")
 
@@ -114,12 +115,12 @@ def print_executive_summary(args, cache):
         if len(cache.kerberoastable) > 5:
             kerb_list += f" (+{len(cache.kerberoastable) - 5} more)"
         output("")
-        output(
-            f"[!] {c('Kerberoastable', Colors.YELLOW)} ({c(str(len(cache.kerberoastable)), Colors.YELLOW)}): {c(kerb_list, Colors.YELLOW)}"
-        )
-        output(
-            f"  {c('→ Accounts with SPNs - request TGS tickets for offline cracking', Colors.YELLOW)}"
-        )
+        cnt = c(str(len(cache.kerberoastable)), Colors.YELLOW)
+        lbl = c("Kerberoastable", Colors.YELLOW)
+        lst = c(kerb_list, Colors.YELLOW)
+        output(f"[!] {lbl} ({cnt}): {lst}")
+        desc = c("→ Accounts with SPNs - request TGS tickets for offline cracking", Colors.YELLOW)
+        output(f"  {desc}")
 
     # Privileged users (members of high-value groups)
     if cache.privileged_users:
@@ -127,9 +128,10 @@ def print_executive_summary(args, cache):
         if len(cache.privileged_users) > 8:
             priv_list += f" (+{len(cache.privileged_users) - 8} more)"
         output("")
-        output(
-            f"[!] {c('Privileged Users', Colors.RED)} ({c(str(len(cache.privileged_users)), Colors.RED)}): {c(priv_list, Colors.RED)}"
-        )
+        cnt = c(str(len(cache.privileged_users)), Colors.RED)
+        lbl = c("Privileged Users", Colors.RED)
+        lst = c(priv_list, Colors.RED)
+        output(f"[!] {lbl} ({cnt}): {lst}")
         output(f"  {c('→ Members of high-value groups (Domain Admins, etc.)', Colors.RED)}")
 
     # --- Quick Wins ---

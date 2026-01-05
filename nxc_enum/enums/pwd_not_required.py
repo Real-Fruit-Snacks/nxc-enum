@@ -350,8 +350,10 @@ def enum_pwd_not_required(args, cache):
                 for flag in sorted(notable_flags):
                     output(f"    - {flag}")
 
-        # Print copyable password not required account list
-        _print_pwd_not_required_list(accounts_detailed, args)
+        # Store for aggregated copy-paste section
+        cache.copy_paste_data["pwd_not_required"].update(
+            account["username"] for account in accounts_detailed
+        )
     else:
         status("No accounts with PASSWD_NOTREQD flag found", "success")
 
@@ -364,15 +366,3 @@ def enum_pwd_not_required(args, cache):
                 "disabled": len([a for a in accounts_detailed if a.get("is_disabled", False)]),
             },
         }
-
-
-def _print_pwd_not_required_list(accounts_detailed: list, args):
-    """Print a simple list of PASSWD_NOTREQD accounts for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not accounts_detailed:
-        return
-
-    output("")
-    output(c("PASSWD_NOTREQD Accounts (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for account in sorted(accounts_detailed, key=lambda x: x["username"].lower()):
-        output(account["username"])

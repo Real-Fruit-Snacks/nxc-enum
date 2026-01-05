@@ -18,10 +18,6 @@ _buffer_lock = threading.Lock()
 OUTPUT_BUFFER = []
 JSON_DATA = {}
 
-# Credential-related arguments that should be redacted in debug output
-_SENSITIVE_ARGS = ("-p", "-H", "--password", "--hash")
-_REDACTED = "****REDACTED****"
-
 
 def set_output_file_requested(value: bool):
     """Set the output file requested flag."""
@@ -101,53 +97,16 @@ def status(msg: str, level: str = "info"):
     output(f"{indicator} {msg}")
 
 
-def _sanitize_cmd_args(cmd_args: list) -> list:
-    """Sanitize command arguments by redacting sensitive values like passwords and hashes.
-
-    This prevents credentials from being exposed in debug output, log files,
-    or screen recordings.
-
-    Args:
-        cmd_args: List of command-line arguments
-
-    Returns:
-        List with sensitive values replaced by _REDACTED
-    """
-    sanitized = []
-    skip_next = False
-
-    for arg in cmd_args:
-        if skip_next:
-            sanitized.append(_REDACTED)
-            skip_next = False
-            continue
-
-        if arg in _SENSITIVE_ARGS:
-            sanitized.append(arg)
-            skip_next = True
-        else:
-            sanitized.append(arg)
-
-    return sanitized
-
-
 def debug_nxc(cmd_args: list, stdout: str, stderr: str, label: str = ""):
-    """Print raw nxc command and output when debug mode is enabled.
-
-    Security: Credentials (-p, -H, --password, --hash) are automatically
-    redacted to prevent exposure in debug output or log files.
-    """
+    """Print raw nxc command and output when debug mode is enabled."""
     if not _debug_mode:
         return
 
-    # Sanitize command args to hide credentials
-    sanitized_args = _sanitize_cmd_args(cmd_args)
-
     # Show actual command with --verbose (always added by run_nxc)
-    if "--verbose" not in sanitized_args:
-        cmd_str = "nxc " + " ".join(sanitized_args) + " --verbose"
+    if "--verbose" not in cmd_args:
+        cmd_str = "nxc " + " ".join(cmd_args) + " --verbose"
     else:
-        cmd_str = "nxc " + " ".join(sanitized_args)
+        cmd_str = "nxc " + " ".join(cmd_args)
 
     output("")
     output(c(f"{'─' * 60}", Colors.CYAN))
@@ -171,3 +130,58 @@ def debug_nxc(cmd_args: list, stdout: str, stderr: str, label: str = ""):
 
     output(c(f"{'─' * 60}", Colors.CYAN))
     output("")
+
+
+def print_target_header(target: str, index: int, total: int):
+    """Print a target separator header for multi-target scans.
+
+    Args:
+        target: Current target IP/hostname
+        index: Current target number (1-indexed)
+        total: Total number of targets
+    """
+    header_text = f"TARGET {index} of {total}: {target}"
+    width = max(80, len(header_text) + 8)
+
+    output("")
+    output(c("=" * width, Colors.CYAN + Colors.BOLD))
+    output(c(header_text.center(width), Colors.CYAN + Colors.BOLD))
+    output(c("=" * width, Colors.CYAN + Colors.BOLD))
+
+
+def print_target_footer(target: str, status_str: str, elapsed: float):
+    """Print a target completion footer for multi-target scans.
+
+    Args:
+        target: Target that was scanned
+        status_str: "success" or "failed"
+        elapsed: Time taken for this target
+    """
+    if status_str == "success":
+        color = Colors.GREEN
+        indicator = "[+]"
+    else:
+        color = Colors.RED
+        indicator = "[-]"
+
+    output("")
+    output(c("-" * 80, Colors.CYAN))
+    output(c(f"{indicator} {target} completed in {elapsed:.2f}s ({status_str})", color))
+    output(c("-" * 80, Colors.CYAN))
+
+
+def reset_output_buffer():
+    """Reset the output buffer for a new target scan.
+
+    Used in multi-target mode to start fresh for each target
+    when not writing to a combined output file.
+    """
+    global OUTPUT_BUFFER
+    with _buffer_lock:
+        OUTPUT_BUFFER = []
+
+
+def clear_json_data():
+    """Clear JSON data dict for a new target scan."""
+    global JSON_DATA
+    JSON_DATA = {}

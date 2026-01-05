@@ -207,12 +207,26 @@ def enum_webdav(args, cache):
             priority="high",
         )
     else:
-        status("WebClient service is not running", "success")
+        # Distinguish between "definitely not running" vs "could not determine"
+        # Check if we have explicit evidence that service is not running
+        explicit_not_running = any(
+            "not running" in msg.lower() or "not found" in msg.lower()
+            for msg in verbose_info["info_messages"]
+        )
+        has_errors = len(verbose_info["errors"]) > 0
+        has_service_details = len(verbose_info["service_details"]) > 0
+
+        if explicit_not_running or has_service_details:
+            status("WebClient service is not running", "success")
+        elif has_errors:
+            status("Could not determine WebClient service status", "info")
+        else:
+            status("WebClient service is not running (no response)", "success")
 
         # Show why it's not running if we have verbose info
         if verbose_info["info_messages"]:
             for msg in verbose_info["info_messages"][:3]:  # Limit to first 3
-                status(f"  {msg}", "info")
+                output(f"    {msg}")
 
     # Display any errors encountered during enumeration
     if verbose_info["errors"]:

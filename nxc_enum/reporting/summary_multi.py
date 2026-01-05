@@ -6,7 +6,8 @@ from ..core.output import output, print_section
 
 def print_executive_summary_multi(args, cache, creds, results):
     """Print executive summary for multi-credential mode."""
-    print_section("Executive Summary", args.target)
+    target = cache.target if cache else args.target
+    print_section("Executive Summary", target)
 
     domain_info = cache.domain_info or {}
     smb_info = cache.smb_info or {}
@@ -17,7 +18,7 @@ def print_executive_summary_multi(args, cache, creds, results):
     output("-" * 50)
     _hostname = domain_info.get("hostname", "Unknown")  # noqa: F841 - available for future use
     fqdn = domain_info.get("fqdn", "")
-    target_str = f"{args.target}"
+    target_str = f"{target}"
     if fqdn:
         target_str += f" ({fqdn})"
     output(f"  Target:      {target_str}")
@@ -53,17 +54,17 @@ def print_executive_summary_multi(args, cache, creds, results):
     if smb_info.get("signing_required"):
         output(f"[+] SMB Signing: {c('REQUIRED', Colors.GREEN)}")
     else:
-        output(
-            f"[!] SMB Signing: {c('NOT REQUIRED', Colors.RED)} - {c('Relay attacks possible!', Colors.RED)}"
-        )
+        msg = f"[!] SMB Signing: {c('NOT REQUIRED', Colors.RED)}"
+        msg += f" - {c('Relay attacks possible!', Colors.RED)}"
+        output(msg)
 
     min_pw_len = policy_info.get("Minimum password length", "Unknown")
     try:
         min_pw_int = int(min_pw_len) if min_pw_len != "Unknown" else None
         if min_pw_int is not None and min_pw_int < 8:
-            output(
-                f"[!] Min Password Length: {c(f'{min_pw_len} chars', Colors.RED)} {c('(weak)', Colors.RED)}"
-            )
+            msg = f"[!] Min Password Length: {c(f'{min_pw_len} chars', Colors.RED)}"
+            msg += f" {c('(weak)', Colors.RED)}"
+            output(msg)
         else:
             output(f"[+] Min Password Length: {c(f'{min_pw_len} chars', Colors.GREEN)}")
     except (ValueError, TypeError):
@@ -71,9 +72,9 @@ def print_executive_summary_multi(args, cache, creds, results):
 
     lockout = policy_info.get("Lockout threshold", "Unknown")
     if lockout in ("None", "0", 0, None):
-        output(
-            f"[!] Lockout Threshold: {c('NONE', Colors.RED)} - {c('Password spraying safe!', Colors.RED)}"
-        )
+        msg = f"[!] Lockout Threshold: {c('NONE', Colors.RED)}"
+        msg += f" - {c('Password spraying safe!', Colors.RED)}"
+        output(msg)
     elif lockout == "Unknown":
         output("[*] Lockout Threshold: Unknown")
     else:
@@ -82,9 +83,9 @@ def print_executive_summary_multi(args, cache, creds, results):
     # Check for spooler
     for user, (success, spooler_running, verbose_info) in results.printers.items():
         if spooler_running:
-            output(
-                f"[!] Print Spooler: {c('RUNNING', Colors.RED)} - {c('Check for PrintNightmare!', Colors.RED)}"
-            )
+            msg = f"[!] Print Spooler: {c('RUNNING', Colors.RED)}"
+            msg += f" - {c('Check for PrintNightmare!', Colors.RED)}"
+            output(msg)
             break
 
     # AV/EDR
@@ -120,17 +121,17 @@ def print_executive_summary_multi(args, cache, creds, results):
 
     # Kerberoastable
     if cache.kerberoastable:
-        # Truncate list if more than 5 accounts (kerberoastable is a list of dicts with 'username' and 'spns')
+        # Truncate list if more than 5 accounts
         kerb_usernames = [k["username"] for k in cache.kerberoastable]
         users_list = ", ".join(kerb_usernames[:5])
         if len(cache.kerberoastable) > 5:
             users_list += f" (+{len(cache.kerberoastable) - 5} more)"
-        output(
-            f"[!] {c('Kerberoastable', Colors.YELLOW)} ({c(str(len(cache.kerberoastable)), Colors.YELLOW)}): {c(users_list, Colors.YELLOW)}"
-        )
-        output(
-            f"  {c('→ Accounts with SPNs - request TGS tickets for offline cracking', Colors.YELLOW)}"
-        )
+        cnt = c(str(len(cache.kerberoastable)), Colors.YELLOW)
+        lbl = c("Kerberoastable", Colors.YELLOW)
+        lst = c(users_list, Colors.YELLOW)
+        output(f"[!] {lbl} ({cnt}): {lst}")
+        desc = c("→ Accounts with SPNs - request TGS tickets for offline cracking", Colors.YELLOW)
+        output(f"  {desc}")
         output("")
 
     # Privileged Users
@@ -140,9 +141,10 @@ def print_executive_summary_multi(args, cache, creds, results):
         priv_list = ", ".join(priv_users)
         if len(cache.privileged_users) > 5:
             priv_list += f" (+{len(cache.privileged_users) - 5} more)"
-        output(
-            f"[!] {c('Privileged Users', Colors.RED)} ({c(str(len(cache.privileged_users)), Colors.RED)}): {c(priv_list, Colors.RED)}"
-        )
+        cnt = c(str(len(cache.privileged_users)), Colors.RED)
+        lbl = c("Privileged Users", Colors.RED)
+        lst = c(priv_list, Colors.RED)
+        output(f"[!] {lbl} ({cnt}): {lst}")
         output(f"  {c('→ Members of high-value groups (Domain Admins, etc.)', Colors.RED)}")
         output("")
 
@@ -153,9 +155,8 @@ def print_executive_summary_multi(args, cache, creds, results):
     if lockout_val in (None, "None", "0", 0):
         output(f"[!] {c('Password spraying (no lockout)', Colors.RED)}")
     if cache.kerberoastable:
-        output(
-            f"[!] {c(f'Kerberoasting ({len(cache.kerberoastable)} accounts with SPNs)', Colors.RED)}"
-        )
+        msg = c(f"Kerberoasting ({len(cache.kerberoastable)} accounts with SPNs)", Colors.RED)
+        output(f"[!] {msg}")
     for user, (success, spooler_running, verbose_info) in results.printers.items():
         if spooler_running:
             output(f"[!] {c('PrintNightmare (spooler running)', Colors.RED)}")

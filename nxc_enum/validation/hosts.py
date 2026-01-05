@@ -4,6 +4,77 @@ import socket
 from typing import Optional, Tuple
 
 from ..core.constants import RE_DOMAIN, RE_HOSTNAME
+from ..core.output import status
+from ..core.runner import run_nxc
+
+
+def early_hosts_check(target: str, timeout: int) -> Tuple[bool, Optional[str]]:
+    """Perform early hosts resolution check before any enumeration.
+
+    Makes an unauthenticated SMB connection to get the DC hostname from the banner,
+    then verifies that hostname resolves to the target IP.
+
+    Args:
+        target: Target IP address
+        timeout: Connection timeout in seconds
+
+    Returns:
+        Tuple of (success: bool, hosts_line: str | None)
+        - success=True if hostname resolves correctly or check cannot be performed
+        - hosts_line contains the /etc/hosts line suggestion if resolution failed
+    """
+    status("Verifying DC hostname resolution...", "info")
+
+    # Make unauthenticated SMB connection to get banner with hostname
+    # Using empty creds just to grab the banner - will get auth failure but that's ok
+    smb_args = ["smb", target, "-u", "", "-p", ""]
+    rc, stdout, stderr = run_nxc(smb_args, timeout)
+
+    combined = stdout + stderr
+    if not combined:
+        # Can't get any banner - skip check
+        return True, None
+
+    # Extract hostname from banner (e.g., "445  DC01  [")
+    hostname = None
+    hostname_match = RE_HOSTNAME.search(combined)
+    if hostname_match:
+        hostname = hostname_match.group(1)
+
+    # Extract domain from banner (e.g., "(domain:corp.local)")
+    dns_domain = None
+    domain_match = RE_DOMAIN.search(combined)
+    if domain_match:
+        dns_domain = domain_match.group(1)
+
+    # Cannot check without hostname or domain
+    if not hostname or not dns_domain:
+        return True, None
+
+    # Build FQDN
+    fqdn = f"{hostname}.{dns_domain}"
+    netbios_domain = dns_domain.split(".")[0].upper()
+
+    # Attempt DNS resolution
+    try:
+        resolved_ip = socket.gethostbyname(fqdn)
+    except socket.gaierror:
+        resolved_ip = None
+
+    # Check if resolution matches target
+    if resolved_ip == target:
+        status(f"DC hostname '{fqdn}' resolves correctly", "success")
+        return True, None
+
+    # Generate hosts file line
+    # Format: IP FQDN NETBIOS_DOMAIN HOSTNAME
+    parts = [target, fqdn]
+    if netbios_domain:
+        parts.append(netbios_domain)
+    parts.append(hostname)
+
+    hosts_line = "  ".join(parts)
+    return False, hosts_line
 
 
 def extract_hostname_from_smb(cache) -> None:
@@ -47,9 +118,7 @@ def extract_hostname_from_smb(cache) -> None:
         cache.domain_info["domain_name"] = dns_domain.split(".")[0].upper()
 
 
-def check_hosts_resolution(
-    target_ip: str, cache
-) -> Tuple[bool, Optional[str]]:
+def check_hosts_resolution(target_ip: str, cache) -> Tuple[bool, Optional[str]]:
     """Check if DC hostname resolves to the target IP.
 
     Args:

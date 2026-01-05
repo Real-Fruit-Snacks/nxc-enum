@@ -175,6 +175,8 @@ results.json
 *.enum.json
 output.txt
 output.json
+Test_app.txt
+test_output*.txt
 
 # Temporary analysis files
 *.tmp

@@ -216,8 +216,8 @@ def enum_loggedon(args, cache, is_admin: bool = True):
                         priority="high",
                     )
 
-        # Print copyable logged-on users list
-        _print_loggedon_list(users, args)
+        # Store for aggregated copy-paste section
+        cache.copy_paste_data["loggedon_users"].update(users)
     else:
         status("No logged on users found", "info")
         cache.loggedon_users = []
@@ -225,15 +225,3 @@ def enum_loggedon(args, cache, is_admin: bool = True):
 
     if args.json_output:
         JSON_DATA["loggedon_users"] = {"users": users, "sessions": sessions, "count": len(users)}
-
-
-def _print_loggedon_list(users: list, args):
-    """Print a simple list of logged-on users for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not users:
-        return
-
-    output("")
-    output(c("Logged-On Users (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for user in sorted(users):
-        output(user)

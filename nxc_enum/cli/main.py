@@ -2,9 +2,12 @@
 
 This module orchestrates the nxc-enum enumeration workflow:
 1. Parse and validate command-line arguments
-2. Parse and validate credentials
-3. Run enumeration modules (parallel where possible)
-4. Generate reports and write output
+2. Expand targets (CIDR, ranges, files)
+3. Parse and validate credentials
+4. Run enumeration modules (parallel where possible)
+5. Generate reports and write output
+
+Supports multi-target scanning with per-target output and aggregate summary.
 """
 
 import json
@@ -19,6 +22,8 @@ from ..core.output import (
     OUTPUT_BUFFER,
     output,
     print_banner,
+    print_target_footer,
+    print_target_header,
     set_debug_mode,
     set_output_file_requested,
     status,
@@ -30,24 +35,35 @@ from ..core.runner import run_nxc
 from ..enums import (
     enum_adcs,
     enum_admin_count,
+    enum_asreproast,
     enum_av,
     enum_av_multi,
+    enum_bitlocker,
+    enum_computers,
     enum_dc_list,
     enum_delegation,
     enum_descriptions,
     enum_dns,
     enum_domain_intel,
+    enum_ftp,
     enum_groups,
     enum_kerberoastable,
+    enum_laps,
+    enum_ldap_signing,
     enum_listeners,
+    enum_local_groups,
     enum_loggedon,
     enum_loggedon_multi,
     enum_maq,
+    enum_mssql,
+    enum_nfs,
     enum_os_info,
     enum_policies,
+    enum_pre2k,
     enum_printers,
     enum_printers_multi,
     enum_pwd_not_required,
+    enum_rdp,
     enum_rpc_session,
     enum_sessions,
     enum_sessions_multi,
@@ -55,26 +71,432 @@ from ..enums import (
     enum_shares_multi,
     enum_signing,
     enum_smb_info,
+    enum_subnets,
     enum_target_info,
     enum_users,
     enum_webdav,
 )
 from ..models.cache import EnumCache
 from ..models.credential import CredentialError
+from ..models.multi_target import MultiTargetResults, TargetResult
 from ..models.results import MultiUserResults
 from ..parsing.credentials import parse_credentials
+from ..parsing.targets import TargetExpansionError, expand_targets
 
 # Import reporting functions
 from ..reporting import (
+    print_copy_paste_section,
     print_executive_summary,
     print_executive_summary_multi,
+    print_multi_target_summary,
     print_next_steps,
 )
 from ..validation.anonymous import probe_anonymous_sessions
-from ..validation.hosts import check_hosts_resolution, extract_hostname_from_smb
+from ..validation.hosts import early_hosts_check
 from ..validation.multi import validate_credentials_multi
 from ..validation.single import validate_credentials
 from .args import create_parser
+
+
+def _run_single_target(args, target: str, creds: list) -> TargetResult:
+    """Run enumeration against a single target.
+
+    This is the core enumeration logic extracted from main() to support
+    multi-target scanning. Each call gets a fresh cache instance.
+
+    Args:
+        args: Parsed command-line arguments
+        target: Single target IP/hostname to scan
+        creds: List of credentials (parsed from args)
+
+    Returns:
+        TargetResult with status, cache, and elapsed time
+    """
+    target_start = time.time()
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # EARLY HOSTS RESOLUTION CHECK (before any enumeration)
+    # ─────────────────────────────────────────────────────────────────────────
+    if not args.skip_hosts_check:
+        success, hosts_line = early_hosts_check(target, args.timeout)
+        if not success:
+            status("DC hostname does not resolve to target IP", "error")
+            output(f"  Add to /etc/hosts: {c(hosts_line, Colors.YELLOW)}")
+            output("")
+            status(
+                "Use --skip-hosts-check to bypass this check (not recommended)",
+                "info",
+            )
+            elapsed = time.time() - target_start
+            return TargetResult(
+                target=target,
+                status="failed",
+                error="DC hostname resolution failed - add entry to /etc/hosts",
+                elapsed_time=elapsed,
+            )
+    else:
+        status("Skipping hosts resolution check (--skip-hosts-check)", "warning")
+
+    # Track if running in anonymous mode (null or guest session)
+    anonymous_mode = False
+    has_creds = bool(creds)
+    working_creds = list(creds)  # Copy to avoid modifying original
+
+    # Probe for null/guest sessions (security finding)
+    anon_result = probe_anonymous_sessions(target, args.timeout, has_creds=has_creds)
+
+    # Store anonymous access findings in cache for reporting
+    anon_findings = {
+        "null_available": anon_result.null_success,
+        "guest_available": anon_result.guest_success,
+        "ldap_anonymous": anon_result.ldap_anonymous,
+    }
+
+    if not working_creds:
+        # No credentials provided - use anonymous if available
+        if anon_result.working_credential:
+            working_creds = [anon_result.working_credential]
+            anonymous_mode = True
+            output("")
+            status(
+                f"Continuing with {anon_result.session_type} session - "
+                "some modules may have limited results",
+                "warning",
+            )
+        else:
+            # No anonymous access available
+            elapsed = time.time() - target_start
+            return TargetResult(
+                target=target,
+                status="failed",
+                error="No credentials and no anonymous access available",
+                elapsed_time=elapsed,
+            )
+    else:
+        # Credentials provided - report anonymous findings and continue with creds
+        output("")
+        if anon_result.null_success or anon_result.guest_success:
+            status(
+                "Note: Anonymous access detected but using provided credentials",
+                "info",
+            )
+
+    # Detect multi-credential mode
+    multi_cred_mode = len(working_creds) > 1
+
+    listener_results = {}
+
+    # Initialize cache for this target
+    cache = EnumCache()
+    cache.target = target
+    cache.timeout = args.timeout
+    cache.anonymous_mode = anonymous_mode
+    cache.anonymous_access = anon_findings
+
+    # Initialize multi_results for multi-cred mode
+    multi_results = None
+    if multi_cred_mode:
+        multi_results = MultiUserResults()
+
+    # Validate credentials (skip for anonymous - already validated during probe)
+    if not args.no_validate and not anonymous_mode:
+        if multi_cred_mode:
+            # Multi-credential validation (parallel)
+            valid_creds = validate_credentials_multi(target, working_creds, args.timeout)
+            if not valid_creds:
+                elapsed = time.time() - target_start
+                return TargetResult(
+                    target=target,
+                    status="failed",
+                    error="No valid credentials found",
+                    elapsed_time=elapsed,
+                )
+            working_creds = valid_creds
+
+            # Select best credential for cached operations
+            admin_creds = [cred for cred in working_creds if cred.is_admin]
+            primary_cred = admin_creds[0] if admin_creds else working_creds[0]
+
+            try:
+                cache.auth_args = primary_cred.auth_args()
+                cache.primary_credential = primary_cred
+            except CredentialError as e:
+                elapsed = time.time() - target_start
+                return TargetResult(
+                    target=target,
+                    status="failed",
+                    error=f"Credential error: {e}",
+                    elapsed_time=elapsed,
+                )
+
+            if not admin_creds:
+                status("Note: No admin credentials found - some modules may be limited", "warning")
+        else:
+            # Single credential validation
+            status("Validating credentials...", "info")
+            try:
+                cache.auth_args = working_creds[0].auth_args()
+                cache.primary_credential = working_creds[0]
+            except CredentialError as e:
+                elapsed = time.time() - target_start
+                return TargetResult(
+                    target=target,
+                    status="failed",
+                    error=f"Credential error: {e}",
+                    elapsed_time=elapsed,
+                )
+
+            valid, is_admin = validate_credentials(target, cache.auth_args, cache)
+            if not valid:
+                elapsed = time.time() - target_start
+                return TargetResult(
+                    target=target,
+                    status="failed",
+                    error="Credential validation failed",
+                    elapsed_time=elapsed,
+                )
+            working_creds[0].is_admin = is_admin
+            admin_msg = c(" (LOCAL ADMIN)", Colors.RED) if is_admin else ""
+            status(f"Credentials validated successfully{admin_msg}", "success")
+    elif anonymous_mode:
+        try:
+            cache.auth_args = working_creds[0].auth_args()
+            cache.primary_credential = working_creds[0]
+        except CredentialError as e:
+            elapsed = time.time() - target_start
+            return TargetResult(
+                target=target,
+                status="failed",
+                error=f"Credential error: {e}",
+                elapsed_time=elapsed,
+            )
+    else:
+        # --no-validate
+        status("Skipping credential validation (--no-validate)", "warning")
+        status("Admin detection disabled - admin-only modules will be skipped", "warning")
+        try:
+            cache.auth_args = working_creds[0].auth_args()
+            cache.primary_credential = working_creds[0]
+        except CredentialError as e:
+            elapsed = time.time() - target_start
+            return TargetResult(
+                target=target,
+                status="failed",
+                error=f"Credential error: {e}",
+                elapsed_time=elapsed,
+            )
+
+    # Determine which modules to run
+    run_all = args.all or not any(
+        (
+            args.users,
+            args.groups,
+            args.shares,
+            args.policies,
+            args.sessions,
+            args.loggedon,
+            args.printers,
+            args.av,
+            args.computers,
+            args.local_groups,
+            args.subnets,
+            args.delegation,
+            args.asreproast,
+            args.descriptions,
+            args.maq,
+            args.adcs,
+            args.dc_list,
+            args.pwd_not_reqd,
+            args.admin_count,
+            args.signing,
+            args.webdav,
+            args.dns,
+            args.laps,
+            args.ldap_signing,
+            args.pre2k,
+            args.bitlocker,
+            args.mssql,
+            args.rdp,
+            args.ftp,
+            args.nfs,
+        )
+    )
+
+    # Target info always shown
+    enum_target_info(args, working_creds, cache)
+
+    if run_all:
+        # Phase 1: Parallel port scanning
+        enum_listeners(args, listener_results, cache)
+
+        # Phase 2: Parallel cache priming
+        status("Priming caches in parallel...", "info")
+        cache.prime_caches(target, cache.auth_args)
+
+        # Phase 3: Sequential extraction from cached data
+        enum_domain_intel(args, cache, listener_results)
+        enum_smb_info(args, cache)
+        enum_rpc_session(args, cache)
+        enum_os_info(args, cache)
+        enum_users(args, cache)
+        enum_groups(args, cache)
+
+        if multi_cred_mode:
+            # Multi-cred mode
+            enum_policies(args, cache)
+            enum_computers(args, cache)
+            enum_kerberoastable(args, cache)
+            enum_asreproast(args, cache)
+            enum_delegation(args, cache)
+            enum_maq(args, cache)
+            enum_adcs(args, cache)
+            enum_dc_list(args, cache)
+            enum_pwd_not_required(args, cache)
+            enum_admin_count(args, cache)
+            enum_signing(args, cache)
+            enum_webdav(args, cache)
+            enum_dns(args, cache)
+            enum_laps(args, cache)
+            enum_ldap_signing(args, cache)
+            enum_local_groups(args, cache)
+            enum_subnets(args, cache)
+            enum_pre2k(args, cache)
+            enum_bitlocker(args, cache)
+            enum_mssql(args, cache)
+            enum_rdp(args, cache)
+            enum_ftp(args, cache)
+            enum_nfs(args, cache)
+
+            # Per-user modules
+            enum_shares_multi(args, working_creds, multi_results, cache)
+            enum_sessions_multi(args, working_creds, multi_results, cache)
+            enum_loggedon_multi(args, working_creds, multi_results, cache)
+            enum_printers_multi(args, working_creds, multi_results, cache)
+            enum_av_multi(args, working_creds, multi_results, cache)
+
+            print_executive_summary_multi(args, cache, working_creds, multi_results)
+        else:
+            # Single-cred mode
+            is_admin = working_creds[0].is_admin if working_creds else False
+            run_parallel_modules(args, cache, is_admin)
+
+            enum_computers(args, cache)
+            enum_asreproast(args, cache)
+            enum_delegation(args, cache)
+            enum_maq(args, cache)
+            enum_adcs(args, cache)
+            enum_dc_list(args, cache)
+            enum_pwd_not_required(args, cache)
+            enum_admin_count(args, cache)
+            enum_signing(args, cache)
+            enum_webdav(args, cache)
+            enum_dns(args, cache)
+            enum_laps(args, cache)
+            enum_ldap_signing(args, cache)
+            enum_local_groups(args, cache)
+            enum_subnets(args, cache)
+            enum_pre2k(args, cache)
+            enum_bitlocker(args, cache)
+            enum_mssql(args, cache)
+            enum_rdp(args, cache)
+            enum_ftp(args, cache)
+            enum_nfs(args, cache)
+
+            print_executive_summary(args, cache)
+    else:
+        # Run selected modules only
+        if args.users:
+            enum_users(args, cache)
+        if args.groups:
+            enum_groups(args, cache)
+        if args.shares:
+            if multi_cred_mode:
+                enum_shares_multi(args, working_creds, multi_results, cache)
+            else:
+                enum_shares(args, cache)
+        if args.policies:
+            enum_policies(args, cache)
+        if args.sessions:
+            if multi_cred_mode:
+                enum_sessions_multi(args, working_creds, multi_results, cache)
+            else:
+                is_admin = working_creds[0].is_admin if working_creds else False
+                enum_sessions(args, cache, is_admin)
+        if args.loggedon:
+            if multi_cred_mode:
+                enum_loggedon_multi(args, working_creds, multi_results, cache)
+            else:
+                is_admin = working_creds[0].is_admin if working_creds else False
+                enum_loggedon(args, cache, is_admin)
+        if args.printers:
+            if multi_cred_mode:
+                enum_printers_multi(args, working_creds, multi_results, cache)
+            else:
+                enum_printers(args, cache)
+        if args.av:
+            if multi_cred_mode:
+                enum_av_multi(args, working_creds, multi_results, cache)
+            else:
+                is_admin = working_creds[0].is_admin if working_creds else False
+                enum_av(args, cache, is_admin)
+        if args.computers:
+            enum_computers(args, cache)
+        if args.asreproast:
+            enum_asreproast(args, cache)
+        if args.delegation:
+            enum_delegation(args, cache)
+        if args.descriptions:
+            enum_descriptions(args, cache)
+        if args.maq:
+            enum_maq(args, cache)
+        if args.adcs:
+            enum_adcs(args, cache)
+        if args.dc_list:
+            enum_dc_list(args, cache)
+        if args.pwd_not_reqd:
+            enum_pwd_not_required(args, cache)
+        if args.admin_count:
+            enum_admin_count(args, cache)
+        if args.signing:
+            enum_signing(args, cache)
+        if args.webdav:
+            enum_webdav(args, cache)
+        if args.dns:
+            enum_dns(args, cache)
+        if args.laps:
+            enum_laps(args, cache)
+        if args.ldap_signing:
+            enum_ldap_signing(args, cache)
+        if args.local_groups:
+            enum_local_groups(args, cache)
+        if args.subnets:
+            enum_subnets(args, cache)
+        if args.pre2k:
+            enum_pre2k(args, cache)
+        if args.bitlocker:
+            enum_bitlocker(args, cache)
+        if args.mssql:
+            enum_mssql(args, cache)
+        if args.rdp:
+            enum_rdp(args, cache)
+        if args.ftp:
+            enum_ftp(args, cache)
+        if args.nfs:
+            enum_nfs(args, cache)
+
+    # Print next steps for this target
+    print_next_steps(args, cache)
+
+    # Print aggregated copy-paste section
+    print_copy_paste_section(cache, args)
+
+    elapsed = time.time() - target_start
+    return TargetResult(
+        target=target,
+        status="success",
+        cache=cache,
+        elapsed_time=elapsed,
+    )
 
 
 def main():
@@ -113,321 +535,86 @@ def main():
     if args.password and args.hash:
         print("Warning: Both -p and -H provided. Using password (-p), ignoring hash (-H).")
 
-    # Parse credentials (single or multi)
-    creds = parse_credentials(args)
+    # Expand targets (CIDR, ranges, files - auto-detects type)
+    try:
+        targets = expand_targets(args.target)
+    except TargetExpansionError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
 
-    # Track if running in anonymous mode (null or guest session)
-    anonymous_mode = False
-    has_creds = bool(creds)
+    multi_target_mode = len(targets) > 1
 
-    # Always probe for null/guest sessions first (security finding)
+    # Print banner
     if not args.quiet:
         print_banner()
 
-    anon_result = probe_anonymous_sessions(args.target, args.timeout, has_creds=has_creds)
-
-    # Store anonymous access findings in cache for reporting
-    anon_findings = {
-        "null_available": anon_result.null_success,
-        "guest_available": anon_result.guest_success,
-        "ldap_anonymous": anon_result.ldap_anonymous,
-    }
-
-    if not creds:
-        # No credentials provided - use anonymous if available
-        if anon_result.working_credential:
-            creds = [anon_result.working_credential]
-            anonymous_mode = True
-            output("")
-            status(
-                f"Continuing with {anon_result.session_type} session - "
-                "some modules may have limited results",
-                "warning",
-            )
-        else:
-            # probe_anonymous_sessions already printed helpful message
-            sys.exit(1)
-    else:
-        # Credentials provided - report anonymous findings and continue with creds
+    # Show target expansion info for multi-target
+    if multi_target_mode:
+        status(f"Expanded to {len(targets)} targets", "info")
         output("")
-        if anon_result.null_success or anon_result.guest_success:
-            status(
-                "Note: Anonymous access detected but using provided credentials",
-                "info",
-            )
 
-    # Detect multi-credential mode
-    multi_cred_mode = len(creds) > 1
+    # Parse credentials once (shared across all targets)
+    creds = parse_credentials(args)
 
-    listener_results = {}
+    # Initialize multi-target results collector
+    multi_target_results = MultiTargetResults() if multi_target_mode else None
 
-    # Initialize cache early - will be used by all subsequent operations
-    cache = EnumCache()
-    cache.target = args.target
-    cache.timeout = args.timeout
-    cache.anonymous_mode = anonymous_mode
-    cache.anonymous_access = anon_findings  # Store findings for reporting
+    # Process each target
+    for idx, target in enumerate(targets, 1):
+        if multi_target_mode:
+            print_target_header(target, idx, len(targets))
 
-    # Initialize multi_results for multi-cred mode (needed for selected-module branches too)
-    multi_results = None
-    if multi_cred_mode:
-        multi_results = MultiUserResults()
-
-    # Validate credentials (skip for anonymous - already validated during probe)
-    if not args.no_validate and not anonymous_mode:
-        if multi_cred_mode:
-            # Multi-credential validation (parallel)
-            valid_creds = validate_credentials_multi(args.target, creds, args.timeout)
-            if not valid_creds:
-                status("No valid credentials found. Exiting.", "error")
-                sys.exit(1)
-            creds = valid_creds
-
-            # Explicitly select best credential for cached operations
-            # Prefer admin credentials for maximum enumeration capability
-            admin_creds = [cred for cred in creds if cred.is_admin]
-            primary_cred = admin_creds[0] if admin_creds else creds[0]
-
-            try:
-                cache.auth_args = primary_cred.auth_args()
-            except CredentialError as e:
-                status(f"Credential error: {e}", "error")
-                sys.exit(1)
-
-            # Warn if no admin credentials found
-            if not admin_creds:
-                status("Note: No admin credentials found - some modules may be limited", "warning")
-
-            # Hosts resolution check (multi-cred)
-            if not args.skip_hosts_check:
-                extract_hostname_from_smb(cache)
-                success, hosts_line = check_hosts_resolution(args.target, cache)
-                if not success:
-                    status("DC hostname does not resolve to target IP", "error")
-                    output("")
-                    output(c("Add this line to /etc/hosts:", Colors.YELLOW))
-                    output(f"  {c(hosts_line, Colors.BOLD)}")
-                    output("")
-                    status("Use --skip-hosts-check to bypass this check", "info")
-                    sys.exit(1)
-        else:
-            # Single credential validation (original behavior)
-            status("Validating credentials...", "info")
-            try:
-                cache.auth_args = creds[0].auth_args()
-            except CredentialError as e:
-                status(f"Credential error: {e}", "error")
-                sys.exit(1)
-
-            valid, is_admin = validate_credentials(args.target, cache.auth_args, cache)
-            if not valid:
-                status("Credential validation failed. Use --no-validate to skip.", "error")
-                sys.exit(1)
-            creds[0].is_admin = is_admin
-            admin_msg = c(" (LOCAL ADMIN)", Colors.RED) if is_admin else ""
-            status(f"Credentials validated successfully{admin_msg}", "success")
-
-            # Hosts resolution check (single-cred)
-            if not args.skip_hosts_check:
-                extract_hostname_from_smb(cache)
-                success, hosts_line = check_hosts_resolution(args.target, cache)
-                if not success:
-                    status("DC hostname does not resolve to target IP", "error")
-                    output("")
-                    output(c("Add this line to /etc/hosts:", Colors.YELLOW))
-                    output(f"  {c(hosts_line, Colors.BOLD)}")
-                    output("")
-                    status("Use --skip-hosts-check to bypass this check", "info")
-                    sys.exit(1)
-    elif anonymous_mode:
-        # Anonymous mode: credentials already validated during probe
         try:
-            cache.auth_args = creds[0].auth_args()
-        except CredentialError as e:
-            status(f"Credential error: {e}", "error")
-            sys.exit(1)
-    else:
-        # --no-validate: skip credential validation and admin detection
-        status("Skipping credential validation (--no-validate)", "warning")
-        status("Admin detection disabled - admin-only modules will be skipped", "warning")
-        try:
-            cache.auth_args = creds[0].auth_args()
-        except CredentialError as e:
-            status(f"Credential error: {e}", "error")
-            sys.exit(1)
+            result = _run_single_target(args, target, creds)
 
-    # If no specific modules selected, default to -A behavior
-    run_all = args.all or not any(
-        (
-            args.users,
-            args.groups,
-            args.shares,
-            args.policies,
-            args.sessions,
-            args.loggedon,
-            args.printers,
-            args.av,
-            args.delegation,
-            args.descriptions,
-            args.maq,
-            args.adcs,
-            args.dc_list,
-            args.pwd_not_reqd,
-            args.admin_count,
-            args.signing,
-            args.webdav,
-            args.dns,
-        )
-    )
+            if multi_target_mode:
+                multi_target_results.add_result(target, result)
+                print_target_footer(target, result.status, result.elapsed_time)
+        except KeyboardInterrupt:
+            output("")
+            status("Scan interrupted by user", "warning")
+            if multi_target_mode and multi_target_results:
+                # Mark current target as failed
+                multi_target_results.add_result(
+                    target,
+                    TargetResult(target=target, status="failed", error="Interrupted"),
+                )
+            break
+        except Exception as e:
+            error_msg = str(e) if str(e) else type(e).__name__
+            status(f"Error scanning {target}: {error_msg}", "error")
+            if multi_target_mode:
+                multi_target_results.add_result(
+                    target,
+                    TargetResult(target=target, status="failed", error=error_msg),
+                )
+                print_target_footer(target, "failed", 0)
 
-    # Target info always shown (pass creds for admin detection)
-    enum_target_info(args, creds)
-
-    if run_all:
-        # Phase 1: Parallel port scanning
-        enum_listeners(args, listener_results)
-
-        # Phase 2: Parallel cache priming (SMB, RID brute, LDAP all at once)
-        status("Priming caches in parallel...", "info")
-        cache.prime_caches(args.target, cache.auth_args)
-
-        # Phase 3: Sequential extraction from cached data (UNIVERSAL - run once)
-        enum_domain_intel(args, cache, listener_results)
-        enum_smb_info(args, cache)
-        enum_rpc_session(args, cache)
-        enum_os_info(args, cache)
-        enum_users(args, cache)
-        enum_groups(args, cache)
-
-        if multi_cred_mode:
-            # Multi-cred mode: run per-user commands for each credential
-            # Phase 4a: Universal modules (run once)
-            enum_policies(args, cache)
-            enum_kerberoastable(args, cache)
-
-            # Phase 4a-extended: New enumeration modules (LDAP-based, run once)
-            enum_delegation(args, cache)
-            # Note: descriptions are shown in Users table, skip separate section
-            enum_maq(args, cache)
-            enum_adcs(args, cache)
-            enum_dc_list(args, cache)
-            enum_pwd_not_required(args, cache)
-            enum_admin_count(args, cache)
-            enum_signing(args, cache)
-            enum_webdav(args, cache)
-            enum_dns(args, cache)
-
-            # Phase 4b: Per-user modules (run for each credential)
-            enum_shares_multi(args, creds, multi_results)
-            enum_sessions_multi(args, creds, multi_results)
-            enum_loggedon_multi(args, creds, multi_results)
-            enum_printers_multi(args, creds, multi_results)
-            enum_av_multi(args, creds, multi_results)
-
-            # Phase 5: Executive Summary (multi-cred version)
-            print_executive_summary_multi(args, cache, creds, multi_results)
-        else:
-            # Single-cred mode: use original parallel modules
-            # Phase 4: Parallel independent modules with buffered output
-            is_admin = creds[0].is_admin if creds else False
-            run_parallel_modules(args, cache, is_admin)
-
-            # Phase 4-extended: New enumeration modules
-            enum_delegation(args, cache)
-            # Note: descriptions are shown in Users table, skip separate section
-            enum_maq(args, cache)
-            enum_adcs(args, cache)
-            enum_dc_list(args, cache)
-            enum_pwd_not_required(args, cache)
-            enum_admin_count(args, cache)
-            enum_signing(args, cache)
-            enum_webdav(args, cache)
-            enum_dns(args, cache)
-
-            # Phase 5: Executive Summary
-            print_executive_summary(args, cache)
-    else:
-        # Run selected modules
-        if args.users:
-            enum_users(args, cache)
-        if args.groups:
-            enum_groups(args, cache)
-        if args.shares:
-            if multi_cred_mode:
-                enum_shares_multi(args, creds, multi_results)
-            else:
-                enum_shares(args, cache)
-        if args.policies:
-            enum_policies(args, cache)
-        if args.sessions:
-            if multi_cred_mode:
-                enum_sessions_multi(args, creds, multi_results)
-            else:
-                is_admin = creds[0].is_admin if creds else False
-                enum_sessions(args, cache, is_admin)
-        if args.loggedon:
-            if multi_cred_mode:
-                enum_loggedon_multi(args, creds, multi_results)
-            else:
-                is_admin = creds[0].is_admin if creds else False
-                enum_loggedon(args, cache, is_admin)
-        if args.printers:
-            if multi_cred_mode:
-                enum_printers_multi(args, creds, multi_results)
-            else:
-                enum_printers(args, cache)
-        if args.av:
-            if multi_cred_mode:
-                enum_av_multi(args, creds, multi_results)
-            else:
-                is_admin = creds[0].is_admin if creds else False
-                enum_av(args, cache, is_admin)
-        # New enumeration modules
-        if args.delegation:
-            enum_delegation(args, cache)
-        if args.descriptions:
-            enum_descriptions(args, cache)
-        if args.maq:
-            enum_maq(args, cache)
-        if args.adcs:
-            enum_adcs(args, cache)
-        if args.dc_list:
-            enum_dc_list(args, cache)
-        if args.pwd_not_reqd:
-            enum_pwd_not_required(args, cache)
-        if args.admin_count:
-            enum_admin_count(args, cache)
-        if args.signing:
-            enum_signing(args, cache)
-        if args.webdav:
-            enum_webdav(args, cache)
-        if args.dns:
-            enum_dns(args, cache)
-
-    # Print next steps recommendations (collected during enumeration)
-    print_next_steps(args, cache)
+    # Multi-target summary
+    if multi_target_mode and multi_target_results:
+        multi_target_results.total_elapsed = time.time() - start_time
+        print_multi_target_summary(multi_target_results, args)
 
     elapsed = time.time() - start_time
     output("")
     output(f"Completed after {elapsed:.2f} seconds")
 
+    # JSON output handling
     if args.json_output:
+        if multi_target_mode and multi_target_results:
+            JSON_DATA.update(multi_target_results.to_json())
         JSON_DATA["elapsed_time"] = elapsed
 
     # Write output to file if specified
-    # Security: Create file with restricted permissions (owner read/write only)
     if args.output:
         fd = None
         try:
-            # Create file with 0o600 permissions (owner read/write only)
-            # This prevents other users from reading potentially sensitive enumeration results
             fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             with os.fdopen(fd, "w") as f:
-                fd = None  # fdopen takes ownership, don't close fd separately
+                fd = None
                 if args.json_output:
                     json.dump(JSON_DATA, f, indent=2)
                 else:
-                    # Strip ANSI codes for file output using pre-compiled regex
                     for line in OUTPUT_BUFFER:
                         clean_line = RE_ANSI_ESCAPE.sub("", line)
                         f.write(clean_line + "\n")

@@ -13,14 +13,15 @@ from .printers import parse_verbose_spooler_info
 _lock = threading.Lock()
 
 
-def enum_printers_multi(args, creds: list, results):
+def enum_printers_multi(args, creds: list, results, cache=None):
     """Enumerate printers for multiple credentials."""
-    print_section("Printers", args.target)
+    target = cache.target if cache else args.target
+    print_section("Printers", target)
     status(f"Checking print spooler for {len(creds)} user(s)...")
 
     def get_printers_for_cred(cred):
         auth = cred.auth_args()
-        rc, stdout, stderr = run_nxc(["smb", args.target] + auth + ["-M", "spooler"], args.timeout)
+        rc, stdout, stderr = run_nxc(["smb", target] + auth + ["-M", "spooler"], args.timeout)
         success = "SPOOLER" in stdout
         spooler_running = "enabled" in stdout.lower() or "running" in stdout.lower()
 
@@ -56,7 +57,7 @@ def enum_printers_multi(args, creds: list, results):
 
     output("")
     spooler_detected = False
-    for user in [c.display_name() for c in creds]:
+    for user in [cred.display_name() for cred in creds]:
         result_data = results.printers.get(user, (False, False, {}))
         success = result_data[0]
         spooler_running = result_data[1]

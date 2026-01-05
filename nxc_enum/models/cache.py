@@ -38,6 +38,7 @@ class EnumCache:
 
         # Configuration
         self.auth_args: Optional[list] = None
+        self.primary_credential = None  # Primary Credential object for command substitution
         self.target: Optional[str] = None
         self.timeout: int = DEFAULT_COMMAND_TIMEOUT
         self.domain_info = {}
@@ -54,6 +55,9 @@ class EnumCache:
         self.av_products = []
         self.privileged_users = []
         self.kerberoastable = []
+        self.asreproastable = []  # Accounts without Kerberos pre-auth required
+        self.computers = []  # Domain computers with OS info
+        self.outdated_os_computers = []  # Computers running outdated/EOL operating systems
         self.delegation_accounts = []
         self.user_descriptions = []
         self.group_descriptions = []
@@ -97,6 +101,75 @@ class EnumCache:
             "null_available": False,
             "guest_available": False,
             "ldap_anonymous": False,
+        }
+
+        # LAPS enumeration data
+        self.laps_computers = []  # Computers with LAPS configured
+        self.laps_readable = False  # Whether current user can read LAPS passwords
+
+        # LDAP signing check
+        self.ldap_signing_required = None  # True/False/None
+        self.ldap_channel_binding = None
+        self.ldap_signing_info = {}
+
+        # Local groups enumeration
+        self.local_groups = {}  # {group_name: [members]}
+        self.local_admin_members = []
+
+        # AD sites and subnets
+        self.ad_subnets = []  # [{subnet, site}]
+        self.ad_sites = []
+
+        # Pre-Windows 2000 computers
+        self.pre2k_computers = []
+
+        # BitLocker status
+        self.bitlocker_status = {}  # {drive: status}
+        self.encrypted_drives = []
+        self.unencrypted_drives = []
+
+        # MSSQL enumeration
+        self.mssql_info = {}
+        self.mssql_databases = []
+        self.mssql_linked_servers = []
+
+        # RDP status
+        self.rdp_info = {}
+
+        # FTP enumeration
+        self.ftp_info = {}
+        self.ftp_anonymous = None
+
+        # NFS enumeration
+        self.nfs_info = {}
+        self.nfs_exports = []
+
+        # Aggregated copy-paste data (populated by enum modules, printed at end)
+        self.copy_paste_data: dict = {
+            "usernames": set(),
+            "group_names": set(),
+            "share_names": set(),
+            "kerberoastable_users": set(),
+            "spns": set(),
+            "asreproastable_users": set(),
+            "delegation_accounts": set(),
+            "target_services": set(),
+            "dc_hostnames": set(),
+            "dc_ips": set(),
+            "computer_names": set(),
+            "server_names": set(),
+            "workstation_names": set(),
+            "loggedon_users": set(),
+            "pwd_not_required": set(),
+            "admincount_accounts": set(),
+            # New copy-paste categories
+            "laps_computers": set(),
+            "local_admin_members": set(),
+            "subnets": set(),
+            "pre2k_computers": set(),
+            "mssql_databases": set(),
+            "ftp_files": set(),
+            "nfs_exports": set(),
         }
 
     def add_next_step(

@@ -86,8 +86,7 @@ def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str]:
     combined = stdout + stderr
     # LDAP success typically shows domain info without auth errors
     success = (
-        "[+]" in combined
-        or "LDAP" in combined.upper()
+        "[+]" in combined or "LDAP" in combined.upper()
     ) and "STATUS_LOGON_FAILURE" not in combined.upper()
 
     return success, stdout, stderr
@@ -167,7 +166,7 @@ def probe_anonymous_sessions(
 
     # SMB Null Session
     status("Probing SMB null session...", "info")
-    null_success, _, _ = probe_null_session(target, timeout)
+    null_success, null_stdout, null_stderr = probe_null_session(target, timeout)
 
     if null_success:
         result.null_success = True
@@ -181,11 +180,18 @@ def probe_anonymous_sessions(
         )
         status("SMB null session available!", "success")
     else:
-        status("SMB null session not available", "info")
+        # Parse actual NTSTATUS for informative message
+        null_combined = (null_stdout + null_stderr).upper()
+        if "STATUS_ACCESS_DENIED" in null_combined:
+            status("SMB null session: Access denied", "info")
+        elif "STATUS_LOGON_FAILURE" in null_combined:
+            status("SMB null session: Authentication rejected", "info")
+        else:
+            status("SMB null session not available", "info")
 
     # SMB Guest Session
     status("Probing SMB guest session...", "info")
-    guest_success, _, _ = probe_guest_session(target, timeout)
+    guest_success, guest_stdout, guest_stderr = probe_guest_session(target, timeout)
 
     if guest_success:
         result.guest_success = True
@@ -200,17 +206,35 @@ def probe_anonymous_sessions(
             )
         status("SMB guest session available!", "success")
     else:
-        status("SMB guest session not available", "info")
+        # Parse actual NTSTATUS for informative message
+        guest_combined = (guest_stdout + guest_stderr).upper()
+        if "STATUS_ACCOUNT_DISABLED" in guest_combined:
+            status("SMB guest session: Guest account is disabled", "info")
+        elif "STATUS_ACCESS_DENIED" in guest_combined:
+            status("SMB guest session: Access denied", "info")
+        elif "STATUS_LOGON_FAILURE" in guest_combined:
+            status("SMB guest session: Authentication rejected", "info")
+        else:
+            status("SMB guest session not available", "info")
 
     # LDAP Anonymous Bind
     status("Probing LDAP anonymous bind...", "info")
-    ldap_success, _, _ = probe_ldap_anonymous(target, timeout)
+    ldap_success, ldap_stdout, ldap_stderr = probe_ldap_anonymous(target, timeout)
 
     if ldap_success:
         result.ldap_anonymous = True
-        status("LDAP anonymous bind available!", "success")
+        # Check if searches actually work or just bind
+        ldap_combined = ldap_stdout + ldap_stderr
+        if "operationsError" in ldap_combined:
+            status("LDAP anonymous bind works but search requires authentication", "info")
+        else:
+            status("LDAP anonymous bind available!", "success")
     else:
-        status("LDAP anonymous bind not available", "info")
+        ldap_combined = (ldap_stdout + ldap_stderr).upper()
+        if "STATUS_ACCESS_DENIED" in ldap_combined:
+            status("LDAP anonymous bind: Access denied", "info")
+        else:
+            status("LDAP anonymous bind not available", "info")
 
     # Summary
     output("")

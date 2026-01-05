@@ -42,7 +42,7 @@ def _parse_delegation_line(line: str) -> dict | None:
 
     Example lines:
     sansa.stark  Person  Unconstrained  N/A
-    jon.snow  Person  Constrained w/ Protocol Transition  CIFS/winterfell, CIFS/winterfell.north.sevenkingdoms.local
+    jon.snow  Person  Constrained w/ Protocol Transition  CIFS/winterfell, ...
     CASTELBLACK$  Computer  Constrained  HTTP/winterfell, HTTP/winterfell.north.sevenkingdoms.local
     """
     # Skip header/separator lines
@@ -233,9 +233,8 @@ def enum_delegation(args, cache):
             output("")
 
         if rbcd:
-            output(
-                f"  {c('Resource-Based Constrained Delegation (RBCD)', Colors.YELLOW)} ({len(rbcd)} account(s)):"
-            )
+            rbcd_label = c("Resource-Based Constrained Delegation (RBCD)", Colors.YELLOW)
+            output(f"  {rbcd_label} ({len(rbcd)} account(s)):")
             for d in rbcd:
                 output(f"    {c(d['account'], Colors.YELLOW)} ({d['type']})")
                 # RBCD shows which accounts can delegate TO this account
@@ -271,9 +270,11 @@ def enum_delegation(args, cache):
                 if target_acct.get("target_services")
                 else "<target_spn>"
             )
+            cmd = f"getST.py -spn '{target_spn}' -impersonate Administrator"
+            cmd += f" '{domain}/{target_acct['account']}:<pass>'"
             cache.add_next_step(
                 finding=f"Constrained delegation on {target_acct['account']}",
-                command=f"getST.py -spn '{target_spn}' -impersonate Administrator '{domain}/{target_acct['account']}:<pass>'",
+                command=cmd,
                 description="Request service ticket as any user to delegated service",
                 priority="high",
             )
@@ -281,17 +282,22 @@ def enum_delegation(args, cache):
         if rbcd:
             domain = cache.domain_info.get("dns_domain", "<domain>")
             target_acct = rbcd[0]
+            cmd = f"getST.py -spn 'cifs/{target_acct['account']}'"
+            cmd += f" -impersonate Administrator '{domain}/<attacker_account>:<pass>'"
             cache.add_next_step(
                 finding=f"RBCD on {target_acct['account']}",
-                command=f"getST.py -spn 'cifs/{target_acct['account']}' -impersonate Administrator '{domain}/<attacker_account>:<pass>'",
+                command=cmd,
                 description="Impersonate users to this account via RBCD",
                 priority="high",
             )
 
-        # Print copyable delegation lists
-        _print_delegation_lists(delegations, args)
+        # Store for aggregated copy-paste section
+        cache.copy_paste_data["delegation_accounts"].update(d["account"] for d in delegations)
+        for d in delegations:
+            if d.get("target_services"):
+                cache.copy_paste_data["target_services"].update(d["target_services"])
     else:
-        status("No delegation misconfigurations found", "success")
+        status("No delegation configurations found", "success")
 
     if args.json_output:
         JSON_DATA["delegation"] = {
@@ -311,29 +317,3 @@ def enum_delegation(args, cache):
                 "rbcd": len([d for d in delegations if d["delegation"] == "RBCD"]),
             },
         }
-
-
-def _print_delegation_lists(delegations: list, args):
-    """Print simple lists of delegation accounts and target services for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not delegations:
-        return
-
-    # Collect account names and target services
-    accounts = [d["account"] for d in delegations]
-    services = []
-    for d in delegations:
-        if d.get("target_services"):
-            services.extend(d["target_services"])
-
-    output("")
-    output(c("Delegation Accounts (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for account in sorted(set(accounts)):
-        output(account)
-
-    if services:
-        output("")
-        output(c("Target Services (copy/paste)", Colors.MAGENTA))
-        output("-" * 30)
-        for service in sorted(set(services)):
-            output(service)

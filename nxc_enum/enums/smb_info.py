@@ -8,7 +8,7 @@ from ..core.output import JSON_DATA, output, print_section, status
 from ..parsing.nxc_output import is_nxc_noise_line
 
 # Regex patterns for verbose SMB output parsing
-# Note: Must not match IP addresses like 10.0.24.230 - SMB versions are 1, 2, 2.1, 3, 3.0, 3.0.2, 3.1.1
+# Note: Must not match IPs - SMB versions are 1, 2, 2.1, 3, 3.0, 3.0.2, 3.1.1
 RE_SMB_DIALECT = re.compile(r"(?:SMB|dialect)[:\s]+([123](?:\.[01](?:\.[012])?)?)\b", re.IGNORECASE)
 RE_SMB_DIALECT_VERSION = re.compile(r"\bSMB\s*([123](?:\.[01](?:\.[012])?)?)\b", re.IGNORECASE)
 RE_NEGOTIATED_DIALECT = re.compile(
@@ -293,9 +293,9 @@ def enum_smb_info(args, cache):
     if dialect and dialect != "unknown":
         dialect_color = Colors.GREEN if dialect in ("3.0.2", "3.1.1") else Colors.YELLOW
         if dialect_inferred:
-            output(
-                f"  Dialect: {c(f'SMB {dialect}', dialect_color)} {c('(inferred from OS)', Colors.CYAN)}"
-            )
+            msg = f"  Dialect: {c(f'SMB {dialect}', dialect_color)}"
+            msg += f" {c('(inferred from OS)', Colors.CYAN)}"
+            output(msg)
         else:
             output(f"  Dialect: {c(f'SMB {dialect}', dialect_color)}")
 
@@ -321,9 +321,9 @@ def enum_smb_info(args, cache):
     if signing:
         output(f"  Signing: {c('required', Colors.GREEN)} (secure)")
     else:
-        output(
-            f"  Signing: {c('not required', Colors.YELLOW)} {c('- Relay attacks possible!', Colors.YELLOW)}"
-        )
+        msg = f"  Signing: {c('not required', Colors.YELLOW)}"
+        msg += f" {c('- Relay attacks possible!', Colors.YELLOW)}"
+        output(msg)
 
     # Show capabilities if detected from verbose output
     if verbose_info["capabilities"]:

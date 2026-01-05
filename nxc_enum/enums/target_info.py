@@ -4,10 +4,11 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, output, print_section, status
 
 
-def enum_target_info(args, creds: list = None):
+def enum_target_info(args, creds: list = None, cache=None):
     """Display target information."""
+    target = cache.target if cache else args.target
     print_section("Target Information")
-    status(f"Target ........... {args.target}")
+    status(f"Target ........... {target}")
 
     if creds and len(creds) > 1:
         admin_creds = [cred for cred in creds if cred.is_admin]
@@ -44,14 +45,14 @@ def enum_target_info(args, creds: list = None):
     if args.json_output:
         if creds and len(creds) > 1:
             JSON_DATA["target"] = {
-                "ip": args.target,
-                "credentials": [c.display_name() for c in creds],
+                "ip": target,
+                "credentials": [cr.display_name() for cr in creds],
                 "domain": args.domain,
                 "timeout": args.timeout,
             }
         else:
             JSON_DATA["target"] = {
-                "ip": args.target,
+                "ip": target,
                 "user": args.user,
                 "domain": args.domain,
                 "timeout": args.timeout,

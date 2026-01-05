@@ -11,14 +11,15 @@ from ..parsing.shares import parse_shares_from_output
 _lock = threading.Lock()
 
 
-def enum_shares_multi(args, creds: list, results):
+def enum_shares_multi(args, creds: list, results, cache=None):
     """Enumerate shares for multiple credentials and display as matrix."""
-    print_section("Shares Matrix", args.target)
+    target = cache.target if cache else args.target
+    print_section("Shares Matrix", target)
     status(f"Enumerating shares for {len(creds)} user(s)...")
 
     def get_shares_for_cred(cred):
         auth = cred.auth_args()
-        rc, stdout, stderr = run_nxc(["smb", args.target] + auth + ["--shares"], args.timeout)
+        rc, stdout, stderr = run_nxc(["smb", target] + auth + ["--shares"], args.timeout)
         shares = parse_shares_from_output(stdout)
         return cred.display_name(), shares
 

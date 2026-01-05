@@ -46,7 +46,8 @@ RE_ENCRYPTION = re.compile(r"(?:encryption)[:\s]+(\w+)", re.IGNORECASE)
 # Matches connection-specific signing info (per-host status in verbose mode)
 # Format: "IP ... signing <status>" or "hostname signing: <status>"
 RE_HOST_SIGNING = re.compile(
-    r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\S+?\.(?:local|domain|corp|net|com)\S*)\s+.*?signing[:\s]*(\w+)",
+    r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}|\S+?\.(?:local|domain|corp|net|com)\S*)"
+    r"\s+.*?signing[:\s]*(\w+)",
     re.IGNORECASE,
 )
 
@@ -527,7 +528,8 @@ def enum_signing(args, cache):
     if verbose_data.get("info_messages"):
         # Filter out raw nxc protocol output lines
         filtered_msgs = [
-            msg for msg in verbose_data["info_messages"]
+            msg
+            for msg in verbose_data["info_messages"]
             if not msg.strip().startswith(("SMB", "LDAP", "RPC"))
             and "445" not in msg[:50]  # Skip lines with port numbers near start
         ]

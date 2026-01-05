@@ -9,7 +9,7 @@ from ..core.runner import run_nxc
 from ..parsing.classify import classify_users, safe_int
 
 # Regex patterns for verbose --users output parsing
-# Format: DOMAIN\username badpwdcount: N baddpwdtime: TIMESTAMP pwdlast: TIMESTAMP lastlogon: TIMESTAMP
+# Format: DOMAIN\username badpwdcount: N baddpwdtime: TS pwdlast: TS lastlogon: TS
 RE_BADPWDCOUNT = re.compile(r"badpwdcount:\s*(\d+)", re.IGNORECASE)
 RE_BADDPWDTIME = re.compile(r"baddpwdtime:\s*(\S+)", re.IGNORECASE)
 RE_PWDLAST = re.compile(r"pwdlast:\s*(\S+)", re.IGNORECASE)
@@ -238,20 +238,41 @@ def enum_users(args, cache):
                 output(c(title_text, highlight_color))
             else:
                 output(c(title_text, Colors.CYAN))
-            output(f"{'RID':<6}  {'Username':<22}  {'Description'}")
-            output(f"{'-'*6}  {'-'*22}  {'-'*40}")
+            # Check if any user has pwdlast data
+            has_pwdlast = any(info.get("pwdlast") for _, info in user_list)
+            if has_pwdlast:
+                output(f"{'RID':<6}  {'Username':<22}  {'Last PW Set':<12}  {'Description'}")
+                output(f"{'-'*6}  {'-'*22}  {'-'*12}  {'-'*30}")
+            else:
+                output(f"{'RID':<6}  {'Username':<22}  {'Description'}")
+                output(f"{'-'*6}  {'-'*22}  {'-'*40}")
             for username, info in user_list:
                 rid = info.get("rid", "???")
                 desc = info.get("description", "(null)")
+                pwdlast = info.get("pwdlast", "")
                 if desc == "(null)":
                     desc = ""
-                if len(desc) > 40:
-                    desc = desc[:37] + "..."
+                max_desc_len = 30 if has_pwdlast else 40
+                if len(desc) > max_desc_len:
+                    desc = desc[: max_desc_len - 3] + "..."
+                # Truncate/format pwdlast for display
+                if pwdlast and len(pwdlast) > 12:
+                    pwdlast = pwdlast[:10]  # Keep date portion
                 padded_username = username[:22].ljust(22)
-                if highlight_color:
-                    output(f"{rid:<6}  {c(padded_username, highlight_color)}  {desc}")
+                if has_pwdlast:
+                    pwdlast_str = (pwdlast or "-").ljust(12)
+                    if highlight_color:
+                        output(
+                            f"{rid:<6}  {c(padded_username, highlight_color)}  "
+                            f"{pwdlast_str}  {desc}"
+                        )
+                    else:
+                        output(f"{rid:<6}  {padded_username}  {pwdlast_str}  {desc}")
                 else:
-                    output(f"{rid:<6}  {padded_username}  {desc}")
+                    if highlight_color:
+                        output(f"{rid:<6}  {c(padded_username, highlight_color)}  {desc}")
+                    else:
+                        output(f"{rid:<6}  {padded_username}  {desc}")
 
         # Print each category
         print_user_table("Built-in Accounts", categories["builtin"])
@@ -262,8 +283,8 @@ def enum_users(args, cache):
         # Print notable account status from verbose output
         _print_notable_accounts(notable_accounts, users)
 
-        # Print copyable username list
-        _print_username_list(users, args)
+        # Store usernames for aggregated copy-paste section
+        cache.copy_paste_data["usernames"].update(users.keys())
 
         if args.json_output:
             sorted_users = sorted(users.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))
@@ -330,15 +351,3 @@ def _print_notable_accounts(notable_accounts: dict, users: dict):
         if len(high_badpwd) > 5:
             badpwd_info += f" (+{len(high_badpwd) - 5} more)"
         output(f"  High bad password count: {c(badpwd_info, Colors.YELLOW)}")
-
-
-def _print_username_list(users: dict, args):
-    """Print a simple list of usernames for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not users:
-        return
-
-    output("")
-    output(c("Usernames (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for username in sorted(users.keys()):
-        output(username)

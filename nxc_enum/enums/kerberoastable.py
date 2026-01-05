@@ -36,6 +36,9 @@ def enum_kerberoastable(args, cache):
     debug_nxc(query_args, stdout, stderr, "Kerberoastable Query")
 
     kerberoastable = []
+    filtered_machine_accounts = 0
+    filtered_dc_accounts = 0
+    filtered_krbtgt = 0
     lines = stdout.split("\n")
     current_user = None
     current_spns = []
@@ -59,6 +62,7 @@ def enum_kerberoastable(args, cache):
 
             # Skip Domain Controllers
             if "OU=Domain Controllers" in line:
+                filtered_dc_accounts += 1
                 current_user = None
                 current_spns = []
                 in_spn_attribute = False
@@ -68,12 +72,18 @@ def enum_kerberoastable(args, cache):
             if cn_match:
                 username = cn_match.group(1)
                 # Skip computer accounts and krbtgt
-                if not username.endswith("$") and username.lower() != "krbtgt":
-                    current_user = username
+                if username.endswith("$"):
+                    filtered_machine_accounts += 1
+                    current_user = None
+                    current_spns = []
+                    in_spn_attribute = False
+                elif username.lower() == "krbtgt":
+                    filtered_krbtgt += 1
+                    current_user = None
                     current_spns = []
                     in_spn_attribute = False
                 else:
-                    current_user = None
+                    current_user = username
                     current_spns = []
                     in_spn_attribute = False
             else:
@@ -144,36 +154,27 @@ def enum_kerberoastable(args, cache):
             description="Request TGS tickets for offline cracking with hashcat",
             priority="high",
         )
-        # Print copyable kerberoastable lists
-        _print_kerberoastable_lists(kerberoastable, args)
+
+        # Store for aggregated copy-paste section
+        cache.copy_paste_data["kerberoastable_users"].update(
+            account["username"] for account in kerberoastable
+        )
+        for account in kerberoastable:
+            if account.get("spns"):
+                cache.copy_paste_data["spns"].update(account["spns"])
     else:
         status("No Kerberoastable accounts found", "success")
+        # Show filtered account summary if any were filtered
+        total_filtered = filtered_machine_accounts + filtered_dc_accounts + filtered_krbtgt
+        if total_filtered > 0:
+            filter_parts = []
+            if filtered_machine_accounts:
+                filter_parts.append(f"{filtered_machine_accounts} machine account(s)")
+            if filtered_dc_accounts:
+                filter_parts.append(f"{filtered_dc_accounts} DC account(s)")
+            if filtered_krbtgt:
+                filter_parts.append("krbtgt")
+            output(f"  (Filtered: {', '.join(filter_parts)})")
 
     if args.json_output:
         JSON_DATA["kerberoastable"] = kerberoastable
-
-
-def _print_kerberoastable_lists(kerberoastable: list, args):
-    """Print simple lists of kerberoastable usernames and SPNs for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not kerberoastable:
-        return
-
-    # Collect usernames and SPNs
-    usernames = [account["username"] for account in kerberoastable]
-    spns = []
-    for account in kerberoastable:
-        if account.get("spns"):
-            spns.extend(account["spns"])
-
-    output("")
-    output(c("Kerberoastable Usernames (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for username in sorted(usernames):
-        output(username)
-
-    if spns:
-        output("")
-        output(c("SPNs (copy/paste)", Colors.MAGENTA))
-        output("-" * 30)
-        for spn in sorted(set(spns)):
-            output(spn)

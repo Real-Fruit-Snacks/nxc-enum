@@ -429,8 +429,15 @@ def enum_dc_list(args, cache):
     # Add next steps for interesting findings
     _add_dc_next_steps(dcs, trusts, verbose_info, cache, args)
 
-    # Print copyable DC lists
-    _print_dc_lists(dcs, args)
+    # Store for aggregated copy-paste section
+    for dc in dcs:
+        if " (" in dc and dc.endswith(")"):
+            hostname = dc.split(" (")[0]
+            ip = dc.split(" (")[1].rstrip(")")
+            cache.copy_paste_data["dc_hostnames"].add(hostname)
+            cache.copy_paste_data["dc_ips"].add(ip)
+        else:
+            cache.copy_paste_data["dc_hostnames"].add(dc)
 
     if args.json_output:
         JSON_DATA["dc_list"] = {
@@ -500,18 +507,18 @@ def _print_trust_details(trust_details: list, cache):
         if trust.get("sid_filtering") is not None:
             # SID filtering disabled is a security concern
             if not trust["sid_filtering"]:
-                output(
-                    f"    SID Filtering: {c('DISABLED', Colors.RED)} {c('(Security Risk)', Colors.RED)}"
-                )
+                msg = f"    SID Filtering: {c('DISABLED', Colors.RED)}"
+                msg += f" {c('(Security Risk)', Colors.RED)}"
+                output(msg)
             else:
                 output(f"    SID Filtering: {c('Enabled', Colors.GREEN)}")
 
         if trust.get("sid_history") is not None:
             # SID history enabled can be abused
             if trust["sid_history"]:
-                output(
-                    f"    SID History: {c('ENABLED', Colors.YELLOW)} {c('(Potential for abuse)', Colors.YELLOW)}"
-                )
+                msg = f"    SID History: {c('ENABLED', Colors.YELLOW)}"
+                msg += f" {c('(Potential for abuse)', Colors.YELLOW)}"
+                output(msg)
             else:
                 output("    SID History: Disabled")
 
@@ -535,9 +542,9 @@ def _print_forest_info(verbose_info: dict):
         # Highlight old functional levels
         old_levels = ["2003", "2008", "2008 R2", "2000"]
         if any(old in level for old in old_levels):
-            output(
-                f"  Forest Functional Level: {c(level, Colors.YELLOW)} {c('(Legacy)', Colors.YELLOW)}"
-            )
+            msg = f"  Forest Functional Level: {c(level, Colors.YELLOW)}"
+            msg += f" {c('(Legacy)', Colors.YELLOW)}"
+            output(msg)
         else:
             output(f"  Forest Functional Level: {level}")
 
@@ -577,9 +584,11 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, args)
         # Bidirectional forest trust
         if trust.get("type") and "forest" in trust["type"].lower():
             if trust.get("direction") and "bidirectional" in trust["direction"].lower():
+                cmd = f"nxc ldap {partner} -u <user>@<domain> -p <pass>"
+                cmd += " --trusted-for-delegation"
                 cache.add_next_step(
                     finding=f"Bidirectional forest trust with {partner}",
-                    command=f"nxc ldap {partner} -u <user>@<domain> -p <pass> --trusted-for-delegation",
+                    command=cmd,
                     description="Enumerate trusted forest for delegation abuse paths",
                     priority="medium",
                 )
@@ -603,34 +612,3 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, args)
             description="Collect BloodHound data for attack path analysis",
             priority="medium",
         )
-
-
-def _print_dc_lists(dcs: list, args):
-    """Print simple lists of DC hostnames and IPs for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not dcs:
-        return
-
-    # Parse hostnames and IPs from "hostname.domain.com (IP)" format
-    hostnames = []
-    ips = []
-    for dc in dcs:
-        if " (" in dc and dc.endswith(")"):
-            hostname = dc.split(" (")[0]
-            ip = dc.split(" (")[1].rstrip(")")
-            hostnames.append(hostname)
-            ips.append(ip)
-        else:
-            hostnames.append(dc)
-
-    output("")
-    output(c("DC Hostnames (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for hostname in sorted(hostnames):
-        output(hostname)
-
-    if ips:
-        output("")
-        output(c("DC IP Addresses (copy/paste)", Colors.MAGENTA))
-        output("-" * 30)
-        for ip in sorted(ips):
-            output(ip)

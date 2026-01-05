@@ -11,6 +11,7 @@ from .classify import (
 from .credentials import parse_credentials
 from .nxc_output import is_nxc_noise_line, parse_nxc_output
 from .shares import parse_shares_from_output
+from .targets import TargetExpansionError, expand_targets, get_target_count_estimate
 
 __all__ = [
     "parse_credentials",
@@ -23,4 +24,7 @@ __all__ = [
     "is_builtin_account",
     "classify_users",
     "classify_groups",
+    "expand_targets",
+    "get_target_count_estimate",
+    "TargetExpansionError",
 ]

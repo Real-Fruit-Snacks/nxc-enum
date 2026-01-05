@@ -1,5 +1,7 @@
 """Reporting modules for nxc_enum."""
 
+from .copy_paste import merge_copy_paste_data, print_copy_paste_section
+from .multi_summary import print_multi_target_summary
 from .next_steps import print_next_steps
 from .share_matrix import print_share_matrix
 from .summary import print_executive_summary
@@ -10,4 +12,7 @@ __all__ = [
     "print_executive_summary",
     "print_executive_summary_multi",
     "print_next_steps",
+    "print_multi_target_summary",
+    "print_copy_paste_section",
+    "merge_copy_paste_data",
 ]

@@ -141,9 +141,10 @@ def _parse_qwinsta_parts(parts: list) -> dict:
     return session
 
 
-def enum_sessions_multi(args, creds: list, results):
+def enum_sessions_multi(args, creds: list, results, cache=None):
     """Enumerate sessions for multiple credentials (requires local admin)."""
-    print_section("Active Sessions", args.target)
+    target = cache.target if cache else args.target
+    print_section("Active Sessions", target)
 
     admin_creds = [cred for cred in creds if cred.is_admin]
     if not admin_creds:
@@ -154,15 +155,15 @@ def enum_sessions_multi(args, creds: list, results):
 
     non_admin_count = len(creds) - len(admin_creds)
     if non_admin_count > 0:
-        status(
-            f"Running for {len(admin_creds)} admin user(s), skipping {non_admin_count} non-admin user(s)"
-        )
+        msg = f"Running for {len(admin_creds)} admin user(s), "
+        msg += f"skipping {non_admin_count} non-admin user(s)"
+        status(msg)
     else:
         status(f"Querying sessions for {len(admin_creds)} admin user(s)...")
 
     def get_sessions_for_cred(cred):
         auth = cred.auth_args()
-        rc, stdout, stderr = run_nxc(["smb", args.target] + auth + ["--qwinsta"], args.timeout)
+        rc, stdout, stderr = run_nxc(["smb", target] + auth + ["--qwinsta"], args.timeout)
         success = (
             "[+]" in stdout and "DCERPC" not in stdout and "access_denied" not in stdout.lower()
         )

@@ -15,13 +15,15 @@ from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 
 # Regex patterns for verbose domain output parsing
-# Domain functional level (e.g., "domainFunctionality: 7" or "Domain Functional Level: Windows 2016")
+# Domain functional level (e.g., "domainFunctionality: 7")
 RE_DOMAIN_FUNCTIONAL_LEVEL = re.compile(
-    r"(?:domain\s*functional(?:ity)?(?:\s*level)?|domainfunctionality)\s*[:=]\s*(.+)", re.IGNORECASE
+    r"(?:domain\s*functional(?:ity)?(?:\s*level)?|domainfunctionality)\s*[:=]\s*(.+)",
+    re.IGNORECASE,
 )
-# Forest functional level (e.g., "forestFunctionality: 7" or "Forest Functional Level: Windows 2016")
+# Forest functional level (e.g., "forestFunctionality: 7")
 RE_FOREST_FUNCTIONAL_LEVEL = re.compile(
-    r"(?:forest\s*functional(?:ity)?(?:\s*level)?|forestfunctionality)\s*[:=]\s*(.+)", re.IGNORECASE
+    r"(?:forest\s*functional(?:ity)?(?:\s*level)?|forestfunctionality)\s*[:=]\s*(.+)",
+    re.IGNORECASE,
 )
 # Domain controller functional level
 RE_DC_FUNCTIONAL_LEVEL = re.compile(

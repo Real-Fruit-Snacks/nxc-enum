@@ -24,22 +24,28 @@ def create_parser():
     """Create and return the argument parser."""
     parser = argparse.ArgumentParser(
         prog="nxc-enum",
-        description=textwrap.dedent("""
+        description=textwrap.dedent(
+            """
             ╔═══════════════════════════════════════════════════════════════════╗
             ║  nxc-enum - NetExec AD Enumeration with enum4linux-ng Style       ║
             ╚═══════════════════════════════════════════════════════════════════╝
 
             A comprehensive Active Directory enumeration tool that wraps NetExec
             commands and formats output in the familiar enum4linux-ng style.
+            30+ enumeration modules across multiple protocols.
 
             Features:
+              • Multi-protocol enumeration (SMB, LDAP, MSSQL, RDP, FTP, NFS)
               • Automatic null/guest session probing when no credentials provided
               • Multi-credential support with share access matrix
               • Local admin detection and admin-aware command execution
               • Actionable "Next Steps" recommendations based on findings
-        """),
+              • Pure enumeration only (no command execution on targets)
+        """
+        ),
         formatter_class=CustomHelpFormatter,
-        epilog=textwrap.dedent("""
+        epilog=textwrap.dedent(
+            """
             ─────────────────────────────────────────────────────────────────────
             Examples:
 
@@ -54,9 +60,22 @@ def create_parser():
                 nxc-enum 10.0.24.230 -C creds.txt -d CORP
                 nxc-enum 10.0.24.230 -U users.txt -P passes.txt
 
+              Multi-target (CIDR, ranges, files):
+                nxc-enum 10.0.0.0/24 -u admin -p pass          # CIDR notation
+                nxc-enum 10.0.0.1-50 -u admin -p pass          # IP range
+                nxc-enum 10.0.0.1-10.0.0.50 -u admin -p pass   # Full range
+                nxc-enum targets.txt -u admin -p pass          # Targets file (auto-detected)
+
               Specific modules:
                 nxc-enum 10.0.24.230 -u admin -p pass --shares --users
                 nxc-enum 10.0.24.230 -u admin -p pass --delegation --adcs
+                nxc-enum 10.0.24.230 -u admin -p pass --laps --ldap-signing
+
+              Other protocols:
+                nxc-enum 10.0.24.230 -u admin -p pass --mssql    # MSSQL databases
+                nxc-enum 10.0.24.230 -u admin -p pass --rdp      # RDP/NLA status
+                nxc-enum 10.0.24.230 --ftp                       # FTP anonymous (no auth)
+                nxc-enum 10.0.24.230 --nfs                       # NFS exports (no auth)
 
               Output options:
                 nxc-enum 10.0.24.230 -u admin -p pass -o results.txt
@@ -72,16 +91,21 @@ def create_parser():
                 admin           Password123
                 svc_backup      Summer2024!
             ─────────────────────────────────────────────────────────────────────
-        """),
+        """
+        ),
     )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Target
     # ─────────────────────────────────────────────────────────────────────────
-    parser.add_argument(
+    target_group = parser.add_argument_group(
+        "Target",
+        "Target specification (auto-detects: IP, hostname, CIDR, range, or file)",
+    )
+    target_group.add_argument(
         "target",
         metavar="TARGET",
-        help="Target IP address or hostname",
+        help="IP, hostname, CIDR, range, or targets file (auto-detected if file exists)",
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -92,22 +116,26 @@ def create_parser():
         "Single credential authentication options",
     )
     auth_group.add_argument(
-        "-u", "--user",
+        "-u",
+        "--user",
         metavar="USER",
         help="Username",
     )
     auth_group.add_argument(
-        "-p", "--password",
+        "-p",
+        "--password",
         metavar="PASS",
         help="Password",
     )
     auth_group.add_argument(
-        "-H", "--hash",
+        "-H",
+        "--hash",
         metavar="HASH",
         help="NTLM hash (LM:NT or NT only)",
     )
     auth_group.add_argument(
-        "-d", "--domain",
+        "-d",
+        "--domain",
         metavar="DOMAIN",
         help="Domain name",
     )
@@ -120,17 +148,20 @@ def create_parser():
         "Test multiple credentials with access comparison",
     )
     multi_group.add_argument(
-        "-C", "--credfile",
+        "-C",
+        "--credfile",
         metavar="FILE",
         help="Credentials file (user:password per line)",
     )
     multi_group.add_argument(
-        "-U", "--userfile",
+        "-U",
+        "--userfile",
         metavar="FILE",
         help="Usernames file (one per line)",
     )
     multi_group.add_argument(
-        "-P", "--passfile",
+        "-P",
+        "--passfile",
         metavar="FILE",
         help="Passwords file (one per line, paired with -U)",
     )
@@ -143,7 +174,8 @@ def create_parser():
         "Select specific modules to run (default: all)",
     )
     enum_group.add_argument(
-        "-A", "--all",
+        "-A",
+        "--all",
         action="store_true",
         help="Run all enumeration modules",
     )
@@ -187,6 +219,21 @@ def create_parser():
         action="store_true",
         help="AV/EDR products [admin]",
     )
+    enum_group.add_argument(
+        "--computers",
+        action="store_true",
+        help="Domain computers with OS info",
+    )
+    enum_group.add_argument(
+        "--local-groups",
+        action="store_true",
+        help="Local groups and members",
+    )
+    enum_group.add_argument(
+        "--subnets",
+        action="store_true",
+        help="AD sites and subnets",
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Security Checks (LDAP-based)
@@ -196,9 +243,34 @@ def create_parser():
         "LDAP-based security and misconfiguration checks",
     )
     security_group.add_argument(
+        "--laps",
+        action="store_true",
+        help="LAPS deployment check",
+    )
+    security_group.add_argument(
+        "--ldap-signing",
+        action="store_true",
+        help="LDAP signing requirements",
+    )
+    security_group.add_argument(
+        "--pre2k",
+        action="store_true",
+        help="Pre-Windows 2000 computers",
+    )
+    security_group.add_argument(
+        "--bitlocker",
+        action="store_true",
+        help="BitLocker status [admin]",
+    )
+    security_group.add_argument(
         "--delegation",
         action="store_true",
         help="Delegation misconfigurations",
+    )
+    security_group.add_argument(
+        "--asreproast",
+        action="store_true",
+        help="AS-REP roastable accounts",
     )
     security_group.add_argument(
         "--adcs",
@@ -247,6 +319,34 @@ def create_parser():
     )
 
     # ─────────────────────────────────────────────────────────────────────────
+    # Other Protocols
+    # ─────────────────────────────────────────────────────────────────────────
+    protocol_group = parser.add_argument_group(
+        "Other Protocols",
+        "Additional protocol enumeration (MSSQL, RDP, FTP, NFS)",
+    )
+    protocol_group.add_argument(
+        "--mssql",
+        action="store_true",
+        help="MSSQL databases and linked servers",
+    )
+    protocol_group.add_argument(
+        "--rdp",
+        action="store_true",
+        help="RDP status and NLA check",
+    )
+    protocol_group.add_argument(
+        "--ftp",
+        action="store_true",
+        help="FTP anonymous access",
+    )
+    protocol_group.add_argument(
+        "--nfs",
+        action="store_true",
+        help="NFS share exports",
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
     # Output Options
     # ─────────────────────────────────────────────────────────────────────────
     output_group = parser.add_argument_group(
@@ -254,12 +354,14 @@ def create_parser():
         "Output format and destination options",
     )
     output_group.add_argument(
-        "-o", "--output",
+        "-o",
+        "--output",
         metavar="FILE",
         help="Write output to file",
     )
     output_group.add_argument(
-        "-j", "--json",
+        "-j",
+        "--json",
         dest="json_output",
         action="store_true",
         help="JSON format (requires -o)",
@@ -270,7 +372,8 @@ def create_parser():
         help="Include copy-pastable lists",
     )
     output_group.add_argument(
-        "-q", "--quiet",
+        "-q",
+        "--quiet",
         action="store_true",
         help="Suppress banner",
     )
@@ -283,7 +386,8 @@ def create_parser():
         "Runtime behavior and validation options",
     )
     behavior_group.add_argument(
-        "-t", "--timeout",
+        "-t",
+        "--timeout",
         type=int,
         default=30,
         metavar="SEC",
@@ -297,7 +401,7 @@ def create_parser():
     behavior_group.add_argument(
         "--skip-hosts-check",
         action="store_true",
-        help="Skip /etc/hosts resolution check",
+        help="Bypass mandatory hosts resolution check (not recommended)",
     )
     behavior_group.add_argument(
         "--debug",

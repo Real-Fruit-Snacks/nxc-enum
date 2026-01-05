@@ -99,11 +99,24 @@ def parse_verbose_group_output(stdout: str) -> dict:
     return verbose_data
 
 
-def get_group_members(target: str, auth: list, group_name: str, timeout: int) -> list:
-    """Query members of a specific group via LDAP."""
+def get_group_members(target: str, auth: list, group_name: str, timeout: int) -> tuple:
+    """Query members of a specific group via LDAP.
+
+    Returns:
+        Tuple of (members_list, reason) where reason is one of:
+        - "ok": Successfully retrieved members
+        - "empty": Group has no members
+        - "access_denied": Access was denied
+        - "error": Some other error occurred
+    """
     group_members_args = ["ldap", target] + auth + ["--groups", group_name]
     rc, stdout, stderr = run_nxc(group_members_args, timeout)
     debug_nxc(group_members_args, stdout, stderr, f"Group Members ({group_name})")
+
+    # Check for access denied before parsing
+    combined = (stdout + stderr).upper()
+    if "STATUS_ACCESS_DENIED" in combined or "ACCESS_DENIED" in combined:
+        return [], "access_denied"
 
     members = []
     for line in stdout.split("\n"):
@@ -131,7 +144,10 @@ def get_group_members(target: str, auth: list, group_name: str, timeout: int) ->
                 except (ValueError, IndexError):
                     pass
 
-    return members
+    if members:
+        return members, "ok"
+    else:
+        return [], "empty"
 
 
 def enum_groups(args, cache):
@@ -226,7 +242,8 @@ def enum_groups(args, cache):
         domain_count = sum(1 for g in groups.values() if g.get("type") == "domain")
 
         status(
-            f"Found {len(groups)} group(s) total ({domain_count} domain, {builtin_count} builtin, {local_count} local)",
+            f"Found {len(groups)} group(s) total "
+            f"({domain_count} domain, {builtin_count} builtin, {local_count} local)",
             "success",
         )
 
@@ -234,13 +251,16 @@ def enum_groups(args, cache):
 
         # Query members of high-value groups in parallel
         group_members = {}
+        group_member_reasons = {}  # Track why a group has no members
         privileged_users = set()
         if categories["high_value"]:
             status("Enumerating high-value group members...")
 
             def fetch_members(group_name):
-                members = get_group_members(args.target, cache.auth_args, group_name, args.timeout)
-                return group_name, members
+                members, reason = get_group_members(
+                    args.target, cache.auth_args, group_name, args.timeout
+                )
+                return group_name, members, reason
 
             with ThreadPoolExecutor(max_workers=4) as executor:
                 futures = [
@@ -248,8 +268,9 @@ def enum_groups(args, cache):
                 ]
                 for future in as_completed(futures):
                     try:
-                        gname, members = future.result()
+                        gname, members, reason = future.result()
                         group_members[gname] = members
+                        group_member_reasons[gname] = reason
                         for member in members:
                             privileged_users.add(member)
                     except Exception as e:
@@ -260,14 +281,18 @@ def enum_groups(args, cache):
         # Print High-Value Groups
         if categories["high_value"]:
             groups_with_members = []
-            groups_without_members = []
+            empty_groups = []
+            denied_groups = []
 
             for groupname, info in categories["high_value"]:
                 members = group_members.get(groupname, [])
+                reason = group_member_reasons.get(groupname, "empty")
                 if members:
                     groups_with_members.append((groupname, info, members))
+                elif reason == "access_denied":
+                    denied_groups.append((groupname, info))
                 else:
-                    groups_without_members.append((groupname, info))
+                    empty_groups.append((groupname, info))
 
             output("")
             output(
@@ -293,10 +318,15 @@ def enum_groups(args, cache):
                             desc = desc[:63] + "..."
                         output(f"  {c('Desc:', Colors.CYAN)} {desc}")
 
-            if groups_without_members:
+            # Show empty groups (no members) separately from access-denied groups
+            if empty_groups:
                 output("")
-                empty_names = [g[0] for g in groups_without_members]
-                output(f"{c('Empty/Inaccessible:', Colors.CYAN)} {', '.join(empty_names)}")
+                empty_names = [g[0] for g in empty_groups]
+                output(f"{c('Empty (no members):', Colors.CYAN)} {', '.join(empty_names)}")
+
+            if denied_groups:
+                denied_names = [g[0] for g in denied_groups]
+                output(f"{c('Access Denied:', Colors.YELLOW)} {', '.join(denied_names)}")
 
         # Print Other Groups
         if categories["other"]:
@@ -307,7 +337,10 @@ def enum_groups(args, cache):
             by_type = {"domain": [], "builtin": [], "local": []}
             for groupname, info in categories["other"]:
                 gtype = info.get("type", "local")
-                by_type.get(gtype, by_type["local"]).append(groupname)
+                # Include membercount if available
+                membercount = info.get("membercount", "")
+                entry = f"{groupname}({membercount})" if membercount else groupname
+                by_type.get(gtype, by_type["local"]).append(entry)
 
             for gtype, names in by_type.items():
                 if names:
@@ -358,8 +391,8 @@ def enum_groups(args, cache):
                 output(f"  {c(padded_name, Colors.BOLD)}{type_info}")
                 output(f"    {c(desc, desc_color)}")
 
-        # Print copyable group list
-        _print_group_list(groups, args)
+        # Store group names for aggregated copy-paste section
+        cache.copy_paste_data["group_names"].update(groups.keys())
 
         if args.json_output:
             sorted_groups = sorted(groups.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))
@@ -368,15 +401,3 @@ def enum_groups(args, cache):
                 JSON_DATA["group_descriptions"] = cache.group_descriptions
     else:
         status("No groups found or unable to parse output", "warning")
-
-
-def _print_group_list(groups: dict, args):
-    """Print a simple list of group names for easy copy/paste."""
-    if not getattr(args, "copy_paste", False) or not groups:
-        return
-
-    output("")
-    output(c("Group Names (copy/paste)", Colors.MAGENTA))
-    output("-" * 30)
-    for groupname in sorted(groups.keys()):
-        output(groupname)

@@ -85,9 +85,8 @@ def enum_adcs(args, cache):
             for url in web_services:
                 output(f"  {c(url, Colors.RED)}")
             output("")
-            output(
-                f"  {c('[!] Web enrollment endpoints may be vulnerable to ESC8 (NTLM relay)', Colors.RED)}"
-            )
+            msg = c("[!] Web enrollment may be vulnerable to ESC8 (NTLM relay)", Colors.RED)
+            output(f"  {msg}")
 
         # Add next step recommendation for certipy
         domain = cache.domain_info.get("dns_domain", "<domain>")
@@ -101,9 +100,11 @@ def enum_adcs(args, cache):
 
         # Add ESC8 specific recommendation if web services found
         if web_services:
+            ca_name = ca_names[0] if ca_names else "<ca>"
+            cmd = f"certipy relay -ca {ca_name} -template DomainController"
             cache.add_next_step(
                 finding="Web enrollment endpoint found (potential ESC8)",
-                command=f"certipy relay -ca {ca_names[0] if ca_names else '<ca>'} -template DomainController",
+                command=cmd,
                 description="Relay NTLM auth to web enrollment for domain admin certificate",
                 priority="high",
             )

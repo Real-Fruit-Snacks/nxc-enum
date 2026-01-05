@@ -16,7 +16,7 @@ class Credential:
 
     Attributes:
         user: Username for authentication
-        password: Password (mutually exclusive with hash for auth, but both can be None for null auth)
+        password: Password (mutually exclusive with hash, both can be None for null auth)
         hash: NTLM hash for pass-the-hash authentication
         domain: Optional domain name
         valid: Whether credential has been validated successfully
