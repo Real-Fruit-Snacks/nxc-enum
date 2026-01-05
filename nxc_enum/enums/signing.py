@@ -523,12 +523,19 @@ def enum_signing(args, cache):
         # Display per-host details if multiple hosts
         _display_per_host_info(verbose_data)
 
-    # Display any info messages from verbose output
+    # Display any info messages from verbose output (filter out raw nxc lines)
     if verbose_data.get("info_messages"):
-        output("")
-        output(c("Signing Negotiation Info:", Colors.CYAN))
-        for msg in verbose_data["info_messages"][:5]:  # Limit to first 5
-            output(f"  {msg}")
+        # Filter out raw nxc protocol output lines
+        filtered_msgs = [
+            msg for msg in verbose_data["info_messages"]
+            if not msg.strip().startswith(("SMB", "LDAP", "RPC"))
+            and "445" not in msg[:50]  # Skip lines with port numbers near start
+        ]
+        if filtered_msgs:
+            output("")
+            output(c("Signing Negotiation Info:", Colors.CYAN))
+            for msg in filtered_msgs[:5]:  # Limit to first 5
+                output(f"  {msg}")
 
     if args.json_output:
         JSON_DATA["smb_signing"] = {

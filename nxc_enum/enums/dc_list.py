@@ -429,6 +429,9 @@ def enum_dc_list(args, cache):
     # Add next steps for interesting findings
     _add_dc_next_steps(dcs, trusts, verbose_info, cache, args)
 
+    # Print copyable DC lists
+    _print_dc_lists(dcs, args)
+
     if args.json_output:
         JSON_DATA["dc_list"] = {
             "domain_controllers": dcs,
@@ -600,3 +603,34 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, args)
             description="Collect BloodHound data for attack path analysis",
             priority="medium",
         )
+
+
+def _print_dc_lists(dcs: list, args):
+    """Print simple lists of DC hostnames and IPs for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not dcs:
+        return
+
+    # Parse hostnames and IPs from "hostname.domain.com (IP)" format
+    hostnames = []
+    ips = []
+    for dc in dcs:
+        if " (" in dc and dc.endswith(")"):
+            hostname = dc.split(" (")[0]
+            ip = dc.split(" (")[1].rstrip(")")
+            hostnames.append(hostname)
+            ips.append(ip)
+        else:
+            hostnames.append(dc)
+
+    output("")
+    output(c("DC Hostnames (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for hostname in sorted(hostnames):
+        output(hostname)
+
+    if ips:
+        output("")
+        output(c("DC IP Addresses (copy/paste)", Colors.MAGENTA))
+        output("-" * 30)
+        for ip in sorted(ips):
+            output(ip)

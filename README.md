@@ -13,6 +13,9 @@ A NetExec (nxc) wrapper that provides enum4linux-ng style output for Active Dire
 ## Quick Start
 
 ```bash
+# No credentials - automatic null/guest session probing
+python3 nxc_enum.py 10.0.24.230 -A
+
 # Single credential - full enumeration
 python3 nxc_enum.py 10.0.24.230 -u admin -p 'Password123' -d CORP -A
 
@@ -27,14 +30,17 @@ python3 nxc_enum.py 10.0.24.230 -u admin -p 'Password123' --shares --users
 
 - **enum4linux-ng style output** - Familiar `[*]`, `[+]`, `[-]` status indicators with colored sections
 - **Comprehensive AD enumeration** - Users, groups, shares, policies, sessions, Kerberoastable accounts, and more
+- **Anonymous session probing** - Automatically tests null/guest sessions when no credentials provided
 - **Multi-credential support** - Test multiple credentials with share access matrix output
 - **Local admin detection** - Automatically detects and highlights accounts with local admin rights (Pwn3d!)
 - **Smart command execution** - Universal commands run once, per-user commands run for each credential
 - **Admin-aware skipping** - Commands requiring local admin are skipped for non-admin users
+- **Hosts resolution check** - Verifies DC hostname resolves to target IP before enumeration
 - **LDAP & SMB support** - Enumerates via both protocols for complete coverage
 - **Pass-the-hash support** - Authenticate with NTLM hashes
 - **Result caching** - Parallel execution with caching for ~50% faster runtime
 - **Credential validation** - Pre-validates credentials before full enumeration
+- **Next Steps recommendations** - Actionable follow-up commands based on findings
 - **JSON output** - Export results in JSON format for automation
 - **Debug mode** - Show raw nxc output for troubleshooting
 
@@ -111,6 +117,22 @@ nxc-enum --help
 
 ## Usage
 
+### Anonymous Mode (No Credentials)
+
+When no credentials are provided, nxc-enum automatically probes for anonymous access:
+
+```bash
+# Automatic null/guest session probing
+python3 nxc_enum.py 10.0.24.230 -A
+```
+
+The tool will attempt:
+1. **SMB null session** (`-u '' -p ''`)
+2. **SMB guest session** (`-u 'Guest' -p ''`)
+3. **LDAP anonymous bind**
+
+If any succeed, enumeration continues with that session. Even when credentials are provided, anonymous access is checked and reported as a security finding.
+
 ### Single Credential Mode
 
 ```bash
@@ -173,48 +195,70 @@ svc_backup      Summer2024!
 
 ## Command Line Options
 
-### Target & Authentication
+### Authentication
 
 | Flag | Description |
 |------|-------------|
-| `<target>` | Target IP or hostname (required) |
-| `-u, --user` | Username for authentication |
-| `-p, --password` | Password for authentication |
-| `-H, --hash` | NTLM hash for pass-the-hash |
+| `TARGET` | Target IP address or hostname (required) |
+| `-u, --user` | Username |
+| `-p, --password` | Password |
+| `-H, --hash` | NTLM hash (LM:NT or NT only) |
 | `-d, --domain` | Domain name |
 
-### Multi-Credential Options
+### Multi-Credential Mode
 
 | Flag | Description |
 |------|-------------|
-| `-C, --credfile` | File with credentials (user:password per line) |
-| `-U, --userfile` | File containing usernames (one per line) |
-| `-P, --passfile` | File containing passwords (one per line) |
+| `-C, --credfile` | Credentials file (user:password per line) |
+| `-U, --userfile` | Usernames file (one per line) |
+| `-P, --passfile` | Passwords file (one per line, paired with -U) |
 
 ### Enumeration Modules
 
 | Flag | Description |
 |------|-------------|
 | `-A, --all` | Run all enumeration modules |
-| `--users` | Enumerate domain users |
-| `--groups` | Enumerate domain groups |
-| `--shares` | Enumerate SMB shares |
-| `--policies` | Enumerate password policies |
-| `--sessions` | Enumerate active sessions (requires local admin) |
-| `--loggedon` | Enumerate logged on users (requires local admin) |
-| `--printers` | Enumerate printers |
-| `--av` | Enumerate AV/EDR products (requires local admin) |
+| `--users` | Domain users via RPC |
+| `--groups` | Domain groups with members |
+| `--shares` | SMB shares and permissions |
+| `--policies` | Password and lockout policies |
+| `--sessions` | Active sessions [admin] |
+| `--loggedon` | Logged on users [admin] |
+| `--printers` | Printers and spooler status |
+| `--av` | AV/EDR products [admin] |
 
-### Output & Behavior
+### Security Checks
 
 | Flag | Description |
 |------|-------------|
-| `-t, --timeout` | Timeout in seconds (default: 30) |
-| `-o, --output` | Output file (text or JSON) |
-| `-j, --json` | Output in JSON format |
+| `--delegation` | Delegation misconfigurations |
+| `--adcs` | ADCS certificate templates |
+| `--dc-list` | Domain controllers and trusts |
+| `--pwd-not-reqd` | Accounts with PASSWD_NOTREQD |
+| `--admin-count` | Accounts with adminCount=1 |
+| `--maq` | Machine account quota |
+| `--descriptions` | User description fields |
+| `--signing` | SMB signing requirements |
+| `--webdav` | WebClient service status |
+| `--dns` | DNS records |
+
+### Output
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output` | Write output to file |
+| `-j, --json` | JSON format (requires -o) |
+| `--copy-paste` | Include copy-pastable lists |
 | `-q, --quiet` | Suppress banner |
+
+### Behavior
+
+| Flag | Description |
+|------|-------------|
+| `-t, --timeout` | Command timeout in seconds (default: 30) |
 | `--no-validate` | Skip credential validation |
-| `--debug` | Show raw nxc output before parsed data |
+| `--skip-hosts-check` | Skip /etc/hosts resolution check |
+| `--debug` | Show raw nxc command output |
 
 ## Multi-Credential Execution Flow
 
@@ -334,24 +378,42 @@ When run with `-A` or no specific modules, the following checks are performed:
 
 | # | Section | Description |
 |---|---------|-------------|
-| 1 | Target Information | Display target, credentials (grouped by admin status) |
-| 2 | Listener Scan | Check LDAP (389), LDAPS (636), SMB (445), NetBIOS (139) |
-| 3 | Domain Intelligence | Consolidated domain info (SID, DC, FQDN, NetBIOS) |
-| 4 | SMB Dialect Check | SMB versions, signing requirements |
-| 5 | RPC Session Check | Null session, guest access, authentication |
-| 6 | OS Information | Windows version, build number |
-| 7 | Users via RPC | User list with categories (built-in, service, domain) |
-| 8 | Groups via RPC | Groups with high-value highlighting and members |
-| 9 | Shares | Share permissions (matrix in multi-cred mode) |
-| 10 | Policies | Password and lockout policies |
-| 11 | Active Sessions | Windows sessions (admin only) |
-| 12 | Logged On Users | Currently logged on users (admin only) |
-| 13 | Printers | Print spooler status (PrintNightmare warning) |
-| 14 | AV/EDR Detection | Installed security products (admin only) |
-| 15 | Kerberoastable | Accounts with SPNs via LDAP |
-| 16 | Executive Summary | Target profile, security posture, attack vectors |
+| 1 | Anonymous Session Probe | Check for null/guest/LDAP anonymous access |
+| 2 | Target Information | Display target, credentials (grouped by admin status) |
+| 3 | Listener Scan | Check LDAP (389), LDAPS (636), SMB (445), NetBIOS (139) |
+| 4 | Domain Intelligence | Consolidated domain info (SID, DC, FQDN, NetBIOS) |
+| 5 | SMB Dialect Check | SMB versions, signing requirements |
+| 6 | RPC Session Check | Null session, guest access, authentication |
+| 7 | OS Information | Windows version, build number |
+| 8 | Users via RPC | User list with categories (built-in, service, domain) |
+| 9 | Groups via RPC | Groups with high-value highlighting and members |
+| 10 | Shares | Share permissions (matrix in multi-cred mode) |
+| 11 | Policies | Password and lockout policies |
+| 12 | Active Sessions | Windows sessions (admin only) |
+| 13 | Logged On Users | Currently logged on users (admin only) |
+| 14 | Printers | Print spooler status (PrintNightmare warning) |
+| 15 | AV/EDR Detection | Installed security products (admin only) |
+| 16 | Kerberoastable | Accounts with SPNs via LDAP |
+| 17 | Executive Summary | Target profile, security posture, attack vectors |
+| 18 | Next Steps | Actionable follow-up commands based on findings |
 
 ## Example Output
+
+### Anonymous Session Probe
+
+```
+ ================================================
+|    Anonymous Session Probe for 10.0.24.230    |
+ ================================================
+[*] Probing SMB null session...
+[+] SMB null session available!
+[*] Probing SMB guest session...
+[+] SMB guest session available!
+[*] Probing LDAP anonymous bind...
+[-] LDAP anonymous bind not available
+
+[!] Anonymous access: SMB null, SMB guest
+```
 
 ### Single Credential Mode
 
@@ -437,6 +499,29 @@ POTENTIAL ATTACK VECTORS
 [!] Password spraying (no lockout)
 [!] Kerberoasting (4 accounts with SPNs)
 [!] PrintNightmare (spooler running)
+
+ ==========================================
+|    Next Steps for 10.0.24.230    |
+ ==========================================
+
+HIGH PRIORITY:
+  [!] Kerberoastable accounts found
+      nxc ldap 10.0.24.230 -u <user> -p <pass> --kerberoasting
+      Request TGS tickets for offline password cracking
+
+MEDIUM PRIORITY:
+  [!] Print Spooler running
+      nxc smb 10.0.24.230 -u <user> -p <pass> -M printnightmare
+      Check for PrintNightmare vulnerability
+
+LOW PRIORITY:
+  [*] Readable shares: SYSVOL, NETLOGON, Data
+      nxc smb 10.0.24.230 -u <user> -p <pass> -M spider_plus -o OUTPUT_FOLDER=.
+      Enumerate share contents (creates JSON metadata in current dir)
+
+  [*] Readable shares: SYSVOL, NETLOGON, Data
+      nxc smb 10.0.24.230 -u <user> -p <pass> -M spider_plus -o DOWNLOAD_FLAG=True OUTPUT_FOLDER=.
+      Download files from shares to current directory
 
 Completed after 12.34 seconds
 ```

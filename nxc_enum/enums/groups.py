@@ -358,6 +358,9 @@ def enum_groups(args, cache):
                 output(f"  {c(padded_name, Colors.BOLD)}{type_info}")
                 output(f"    {c(desc, desc_color)}")
 
+        # Print copyable group list
+        _print_group_list(groups, args)
+
         if args.json_output:
             sorted_groups = sorted(groups.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))
             JSON_DATA["groups"] = {g: v for g, v in sorted_groups}
@@ -365,3 +368,15 @@ def enum_groups(args, cache):
                 JSON_DATA["group_descriptions"] = cache.group_descriptions
     else:
         status("No groups found or unable to parse output", "warning")
+
+
+def _print_group_list(groups: dict, args):
+    """Print a simple list of group names for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not groups:
+        return
+
+    output("")
+    output(c("Group Names (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for groupname in sorted(groups.keys()):
+        output(groupname)

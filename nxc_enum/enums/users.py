@@ -262,6 +262,9 @@ def enum_users(args, cache):
         # Print notable account status from verbose output
         _print_notable_accounts(notable_accounts, users)
 
+        # Print copyable username list
+        _print_username_list(users, args)
+
         if args.json_output:
             sorted_users = sorted(users.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))
             JSON_DATA["users"] = {u: v for u, v in sorted_users}
@@ -273,10 +276,16 @@ def enum_users(args, cache):
                 "pwd_not_required": notable_accounts.get("pwd_not_required", []),
             }
     else:
-        status("No users found or unable to parse output", "warning")
-        for line in stdout.split("\n"):
-            if line.strip() and "\\" in line:
-                output(f"  {line.strip()}")
+        # No users parsed - check for access denied or other errors
+        combined = stdout + stderr
+        if "STATUS_ACCESS_DENIED" in combined.upper():
+            status("Access denied - cannot enumerate users", "error")
+        elif "STATUS_LOGON_FAILURE" in combined.upper():
+            status("Authentication failed - cannot enumerate users", "error")
+        elif "STATUS_NO_SUCH_USER" in combined.upper():
+            status("No users found in domain", "warning")
+        else:
+            status("No users found or unable to enumerate", "warning")
 
 
 def _print_notable_accounts(notable_accounts: dict, users: dict):
@@ -321,3 +330,15 @@ def _print_notable_accounts(notable_accounts: dict, users: dict):
         if len(high_badpwd) > 5:
             badpwd_info += f" (+{len(high_badpwd) - 5} more)"
         output(f"  High bad password count: {c(badpwd_info, Colors.YELLOW)}")
+
+
+def _print_username_list(users: dict, args):
+    """Print a simple list of usernames for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not users:
+        return
+
+    output("")
+    output(c("Usernames (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for username in sorted(users.keys()):
+        output(username)

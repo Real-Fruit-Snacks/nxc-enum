@@ -144,8 +144,36 @@ def enum_kerberoastable(args, cache):
             description="Request TGS tickets for offline cracking with hashcat",
             priority="high",
         )
+        # Print copyable kerberoastable lists
+        _print_kerberoastable_lists(kerberoastable, args)
     else:
         status("No Kerberoastable accounts found", "success")
 
     if args.json_output:
         JSON_DATA["kerberoastable"] = kerberoastable
+
+
+def _print_kerberoastable_lists(kerberoastable: list, args):
+    """Print simple lists of kerberoastable usernames and SPNs for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not kerberoastable:
+        return
+
+    # Collect usernames and SPNs
+    usernames = [account["username"] for account in kerberoastable]
+    spns = []
+    for account in kerberoastable:
+        if account.get("spns"):
+            spns.extend(account["spns"])
+
+    output("")
+    output(c("Kerberoastable Usernames (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for username in sorted(usernames):
+        output(username)
+
+    if spns:
+        output("")
+        output(c("SPNs (copy/paste)", Colors.MAGENTA))
+        output("-" * 30)
+        for spn in sorted(set(spns)):
+            output(spn)

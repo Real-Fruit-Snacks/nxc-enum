@@ -287,6 +287,9 @@ def enum_delegation(args, cache):
                 description="Impersonate users to this account via RBCD",
                 priority="high",
             )
+
+        # Print copyable delegation lists
+        _print_delegation_lists(delegations, args)
     else:
         status("No delegation misconfigurations found", "success")
 
@@ -308,3 +311,29 @@ def enum_delegation(args, cache):
                 "rbcd": len([d for d in delegations if d["delegation"] == "RBCD"]),
             },
         }
+
+
+def _print_delegation_lists(delegations: list, args):
+    """Print simple lists of delegation accounts and target services for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not delegations:
+        return
+
+    # Collect account names and target services
+    accounts = [d["account"] for d in delegations]
+    services = []
+    for d in delegations:
+        if d.get("target_services"):
+            services.extend(d["target_services"])
+
+    output("")
+    output(c("Delegation Accounts (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for account in sorted(set(accounts)):
+        output(account)
+
+    if services:
+        output("")
+        output(c("Target Services (copy/paste)", Colors.MAGENTA))
+        output("-" * 30)
+        for service in sorted(set(services)):
+            output(service)

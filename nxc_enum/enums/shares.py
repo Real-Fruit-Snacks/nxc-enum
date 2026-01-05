@@ -308,8 +308,55 @@ def enum_shares(args, cache):
                     {"share": share, "error": error}
                     for share, error in verbose_info["access_errors"]
                 ]
+
+        # Add spider recommendation if we have readable shares
+        if accessible:
+            # Filter out IPC$ and PRINT$ shares - only suggest spidering file shares
+            file_shares = [
+                name for name, perms, _, stype, _ in accessible
+                if "READ" in perms
+                and name.upper() not in ("IPC$", "PRINT$")
+                and (not stype or "IPC" not in stype.upper())
+            ]
+            if file_shares:
+                share_list = ", ".join(file_shares[:3])
+                if len(file_shares) > 3:
+                    share_list += f" (+{len(file_shares) - 3} more)"
+                # Enumerate shares (JSON metadata)
+                cache.add_next_step(
+                    finding=f"Readable shares: {share_list}",
+                    command=f"nxc smb {args.target} -u <user> -p <pass> -M spider_plus -o OUTPUT_FOLDER=.",
+                    description="Enumerate share contents (creates JSON metadata in current dir)",
+                    priority="low",
+                )
+                # Download files from shares
+                cache.add_next_step(
+                    finding=f"Readable shares: {share_list}",
+                    command=f"nxc smb {args.target} -u <user> -p <pass> -M spider_plus -o DOWNLOAD_FLAG=True OUTPUT_FOLDER=.",
+                    description="Download files from shares to current directory",
+                    priority="low",
+                )
+
+        # Print copyable share list
+        _print_share_list(shares, args)
     else:
-        status("Share enumeration output:", "info")
-        for line in stdout.split("\n"):
-            if line.strip():
-                output(f"  {line.strip()}")
+        # No shares parsed - check for access denied or other errors
+        combined = stdout + stderr
+        if "STATUS_ACCESS_DENIED" in combined.upper():
+            status("Access denied - cannot enumerate shares", "error")
+        elif "STATUS_LOGON_FAILURE" in combined.upper():
+            status("Authentication failed - cannot enumerate shares", "error")
+        else:
+            status("No shares found or unable to enumerate", "warning")
+
+
+def _print_share_list(shares: list, args):
+    """Print a simple list of share names for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not shares:
+        return
+
+    output("")
+    output(c("Share Names (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for share_name, _, _, _, _ in sorted(shares, key=lambda x: x[0].lower()):
+        output(share_name)

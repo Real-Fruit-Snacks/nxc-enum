@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Anonymous Session Probing** - Automatic null/guest session detection when no credentials provided
+  - Probes SMB null session (`-u '' -p ''`)
+  - Probes SMB guest session (`-u 'Guest' -p ''`)
+  - Probes LDAP anonymous bind
+  - Continues enumeration with working anonymous session if found
+  - Always checks for anonymous access even with credentials (security finding)
+- **Hosts Resolution Check** - Pre-flight check ensuring DC hostname resolves to target IP
+  - Extracts hostname from SMB connection
+  - Verifies DNS resolution matches target
+  - Provides `/etc/hosts` line for quick fix if resolution fails
+  - Use `--skip-hosts-check` to bypass
+- **Spider Recommendation** - Next Steps suggests `spider_plus` module for readable shares
+  - Enumerate: `nxc smb <target> -u <user> -p <pass> -M spider_plus -o OUTPUT_FOLDER=.`
+  - Download: `nxc smb <target> -u <user> -p <pass> -M spider_plus -o DOWNLOAD_FLAG=True OUTPUT_FOLDER=.`
+  - Filters out IPC$ and PRINT$ shares
+- **Copy-Paste Output Mode** (`--copy-paste`) - Adds simple, line-by-line lists after each enumeration section for easy copying into other tools
+  - Usernames, share names, group names, DC hostnames/IPs
+  - Kerberoastable usernames and SPNs
+  - Logged-on users, delegation accounts, target services
+  - AdminCount accounts, PASSWD_NOTREQD accounts
+  - Lists displayed in magenta to stand out from other output
+
+### Changed
+- **Professional Help Output** - Completely revamped `--help` with organized argument groups
+  - Authentication, Multi-Credential Mode, Enumeration Modules, Security Checks, Output, Behavior
+  - Unicode box header with feature highlights
+  - Concise descriptions with `[admin]` markers for privileged modules
+  - Comprehensive examples and credential file format documentation
+
+### Fixed
+- Fixed SMB signing output showing raw nxc protocol lines in "Signing Negotiation Info" section
+- Fixed Shares fallback showing raw INFO verbose lines instead of clean error messages
+- Fixed Users fallback showing raw nxc connection lines instead of clean error messages
+
 ## [1.5.1] - 2024-12-01
 
 ### Security

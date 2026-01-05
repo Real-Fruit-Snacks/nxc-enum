@@ -300,6 +300,9 @@ def enum_admin_count(args, cache):
 
         # Print summary of verbose data if available
         _print_verbose_summary(account_details)
+
+        # Print copyable admin account list
+        _print_admincount_list(accounts, args)
     else:
         status("No accounts with adminCount attribute found", "info")
 
@@ -397,3 +400,15 @@ def _print_verbose_summary(account_details: list):
         if notable_groups:
             groups_str = ", ".join(notable_groups)
             output(f"  {c(acct['name'], Colors.YELLOW)}: {c(groups_str, Colors.RED)}")
+
+
+def _print_admincount_list(accounts: list, args):
+    """Print a simple list of adminCount accounts for easy copy/paste."""
+    if not getattr(args, "copy_paste", False) or not accounts:
+        return
+
+    output("")
+    output(c("AdminCount Accounts (copy/paste)", Colors.MAGENTA))
+    output("-" * 30)
+    for account in sorted(accounts):
+        output(account)

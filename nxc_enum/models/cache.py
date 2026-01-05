@@ -90,6 +90,14 @@ class EnumCache:
         self.next_steps = []
         # RPC session verbose data (connection, auth, bindings)
         self.rpc_session_info = {}
+        # Anonymous session mode (null or guest session without credentials)
+        self.anonymous_mode: bool = False
+        # Anonymous access findings (checked regardless of credentials)
+        self.anonymous_access: dict = {
+            "null_available": False,
+            "guest_available": False,
+            "ldap_anonymous": False,
+        }
 
     def add_next_step(
         self, finding: str, command: str, description: str = "", priority: str = "medium"

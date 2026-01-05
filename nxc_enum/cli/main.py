@@ -70,6 +70,8 @@ from ..reporting import (
     print_executive_summary_multi,
     print_next_steps,
 )
+from ..validation.anonymous import probe_anonymous_sessions
+from ..validation.hosts import check_hosts_resolution, extract_hostname_from_smb
 from ..validation.multi import validate_credentials_multi
 from ..validation.single import validate_credentials
 from .args import create_parser
@@ -113,9 +115,46 @@ def main():
 
     # Parse credentials (single or multi)
     creds = parse_credentials(args)
+
+    # Track if running in anonymous mode (null or guest session)
+    anonymous_mode = False
+    has_creds = bool(creds)
+
+    # Always probe for null/guest sessions first (security finding)
+    if not args.quiet:
+        print_banner()
+
+    anon_result = probe_anonymous_sessions(args.target, args.timeout, has_creds=has_creds)
+
+    # Store anonymous access findings in cache for reporting
+    anon_findings = {
+        "null_available": anon_result.null_success,
+        "guest_available": anon_result.guest_success,
+        "ldap_anonymous": anon_result.ldap_anonymous,
+    }
+
     if not creds:
-        print("Error: No credentials provided. Use -u/-p, -C, or -U/-P.")
-        sys.exit(1)
+        # No credentials provided - use anonymous if available
+        if anon_result.working_credential:
+            creds = [anon_result.working_credential]
+            anonymous_mode = True
+            output("")
+            status(
+                f"Continuing with {anon_result.session_type} session - "
+                "some modules may have limited results",
+                "warning",
+            )
+        else:
+            # probe_anonymous_sessions already printed helpful message
+            sys.exit(1)
+    else:
+        # Credentials provided - report anonymous findings and continue with creds
+        output("")
+        if anon_result.null_success or anon_result.guest_success:
+            status(
+                "Note: Anonymous access detected but using provided credentials",
+                "info",
+            )
 
     # Detect multi-credential mode
     multi_cred_mode = len(creds) > 1
@@ -126,17 +165,16 @@ def main():
     cache = EnumCache()
     cache.target = args.target
     cache.timeout = args.timeout
+    cache.anonymous_mode = anonymous_mode
+    cache.anonymous_access = anon_findings  # Store findings for reporting
 
     # Initialize multi_results for multi-cred mode (needed for selected-module branches too)
     multi_results = None
     if multi_cred_mode:
         multi_results = MultiUserResults()
 
-    if not args.quiet:
-        print_banner()
-
-    # Validate credentials
-    if not args.no_validate:
+    # Validate credentials (skip for anonymous - already validated during probe)
+    if not args.no_validate and not anonymous_mode:
         if multi_cred_mode:
             # Multi-credential validation (parallel)
             valid_creds = validate_credentials_multi(args.target, creds, args.timeout)
@@ -159,6 +197,19 @@ def main():
             # Warn if no admin credentials found
             if not admin_creds:
                 status("Note: No admin credentials found - some modules may be limited", "warning")
+
+            # Hosts resolution check (multi-cred)
+            if not args.skip_hosts_check:
+                extract_hostname_from_smb(cache)
+                success, hosts_line = check_hosts_resolution(args.target, cache)
+                if not success:
+                    status("DC hostname does not resolve to target IP", "error")
+                    output("")
+                    output(c("Add this line to /etc/hosts:", Colors.YELLOW))
+                    output(f"  {c(hosts_line, Colors.BOLD)}")
+                    output("")
+                    status("Use --skip-hosts-check to bypass this check", "info")
+                    sys.exit(1)
         else:
             # Single credential validation (original behavior)
             status("Validating credentials...", "info")
@@ -175,6 +226,26 @@ def main():
             creds[0].is_admin = is_admin
             admin_msg = c(" (LOCAL ADMIN)", Colors.RED) if is_admin else ""
             status(f"Credentials validated successfully{admin_msg}", "success")
+
+            # Hosts resolution check (single-cred)
+            if not args.skip_hosts_check:
+                extract_hostname_from_smb(cache)
+                success, hosts_line = check_hosts_resolution(args.target, cache)
+                if not success:
+                    status("DC hostname does not resolve to target IP", "error")
+                    output("")
+                    output(c("Add this line to /etc/hosts:", Colors.YELLOW))
+                    output(f"  {c(hosts_line, Colors.BOLD)}")
+                    output("")
+                    status("Use --skip-hosts-check to bypass this check", "info")
+                    sys.exit(1)
+    elif anonymous_mode:
+        # Anonymous mode: credentials already validated during probe
+        try:
+            cache.auth_args = creds[0].auth_args()
+        except CredentialError as e:
+            status(f"Credential error: {e}", "error")
+            sys.exit(1)
     else:
         # --no-validate: skip credential validation and admin detection
         status("Skipping credential validation (--no-validate)", "warning")
