@@ -1,9 +1,48 @@
 """Output and display functions."""
 
 import threading
+from typing import List
 
 from .colors import Colors, c
 from .constants import INDICATORS
+
+# Placeholder for redacted credentials in debug output
+_REDACTED = "[REDACTED]"
+
+# Flags that take credential arguments (next arg is sensitive)
+_SENSITIVE_FLAGS = {"-p", "--password", "-H", "--hash"}
+
+
+def _sanitize_cmd_args(cmd_args: List[str]) -> List[str]:
+    """Sanitize command arguments by redacting sensitive values.
+
+    Replaces values following sensitive flags (-p, --password, -H, --hash)
+    with [REDACTED] to prevent credential exposure in logs/debug output.
+
+    Args:
+        cmd_args: List of command line arguments
+
+    Returns:
+        List of arguments with sensitive values redacted
+    """
+    if not cmd_args:
+        return []
+
+    result = []
+    skip_next = False
+
+    for arg in cmd_args:
+        if skip_next:
+            result.append(_REDACTED)
+            skip_next = False
+        elif arg in _SENSITIVE_FLAGS:
+            result.append(arg)
+            skip_next = True
+        else:
+            result.append(arg)
+
+    return result
+
 
 # Thread-local storage for parallel output buffering
 _thread_local = threading.local()
