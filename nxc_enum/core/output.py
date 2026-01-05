@@ -115,7 +115,7 @@ def output(msg: str):
 
 def print_banner():
     """Print tool banner."""
-    output("NXC-ENUM - NetExec Enumeration Wrapper (v1.5.1)")
+    output("NXC-ENUM - NetExec Enumeration Wrapper (v1.6.0)")
     output("")
 
 
