@@ -373,9 +373,7 @@ def _run_single_target(
                 for cred in admin_creds:
                     auth_type = "password" if cred.password else "hash"
                     cred_str = cred.password if cred.password else cred.hash[:32] + "..."
-                    output(
-                        f"  {c('[ADMIN]', Colors.RED)} {cred.username}:{cred_str} ({auth_type})"
-                    )
+                    output(f"  {c('[ADMIN]', Colors.RED)} {cred.username}:{cred_str} ({auth_type})")
                 output("")
 
             if std_creds:
@@ -738,9 +736,7 @@ def main():
 
     # Auto-enable for multiple targets unless --no-prescan specified
     # Also auto-enable for --discover-only regardless of target count
-    use_prescan = (
-        len(targets) > PRESCAN_THRESHOLD and not args.no_prescan
-    ) or args.discover_only
+    use_prescan = (len(targets) > PRESCAN_THRESHOLD and not args.no_prescan) or args.discover_only
 
     if use_prescan:
         status(f"Pre-scanning {len(targets)} targets for SMB (port 445)...", "info")
@@ -765,9 +761,7 @@ def main():
             if args.discover_only:
                 # For discover-only, print empty results gracefully
                 discovery_elapsed = time.time() - start_time
-                print_discovery_results(
-                    {}, original_target_count, 0, discovery_elapsed
-                )
+                print_discovery_results({}, original_target_count, 0, discovery_elapsed)
                 return 0
             status("No hosts responded on port 445 - nothing to enumerate", "error")
             return 1
@@ -788,9 +782,7 @@ def main():
         )
 
         # Filter to only reachable hosts (passed SMB validation)
-        targets = [
-            t for t in live_targets if smb_validation_cache.get(t, (False, {}))[0]
-        ]
+        targets = [t for t in live_targets if smb_validation_cache.get(t, (False, {}))[0]]
 
         smb_filtered = len(live_targets) - len(targets)
         if smb_filtered:
@@ -904,13 +896,10 @@ def main():
         interrupted = False
 
         # Use reduced workers in proxy mode
-        mt_workers = (
-            PROXY_MULTI_TARGET_WORKERS if is_proxy_mode() else MULTI_TARGET_WORKERS
-        )
+        mt_workers = PROXY_MULTI_TARGET_WORKERS if is_proxy_mode() else MULTI_TARGET_WORKERS
 
         status(
-            f"Running parallel enumeration on {len(targets)} targets "
-            f"({mt_workers} workers)...",
+            f"Running parallel enumeration on {len(targets)} targets " f"({mt_workers} workers)...",
             "info",
         )
         output("")
@@ -981,9 +970,7 @@ def main():
                 print_target_header(target, idx, len(targets))
 
             try:
-                result = _run_single_target(
-                    args, target, creds, smb_cache=smb_validation_cache
-                )
+                result = _run_single_target(args, target, creds, smb_cache=smb_validation_cache)
 
                 if multi_target_mode:
                     multi_target_results.add_result(target, result)

@@ -173,8 +173,7 @@ def print_multi_target_summary(results: "MultiTargetResults", args=None):
     # Show both total (sum across targets) and unique (deduplicated)
     if unique_users:
         output(
-            f"  Total Users Enumerated: {findings['total_users']} "
-            f"({len(unique_users)} unique)"
+            f"  Total Users Enumerated: {findings['total_users']} " f"({len(unique_users)} unique)"
         )
     else:
         output(f"  Total Users Enumerated: {findings['total_users']}")

@@ -217,9 +217,7 @@ def enum_gmsa(args, cache):
 
     if args.json_output:
         JSON_DATA["gmsa"] = {
-            "accounts": [
-                {"name": a["name"], "sam": a.get("sam")} for a in gmsa_accounts
-            ],
+            "accounts": [{"name": a["name"], "sam": a.get("sam")} for a in gmsa_accounts],
             "readable": cache.gmsa_readable,
             "count": len(gmsa_accounts),
         }

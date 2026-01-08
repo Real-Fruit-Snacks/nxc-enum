@@ -95,9 +95,7 @@ def enum_asreproast(args, cache):
                             {
                                 "username": sam_name,
                                 "domain": (
-                                    args.domain
-                                    if hasattr(args, "domain") and args.domain
-                                    else None
+                                    args.domain if hasattr(args, "domain") and args.domain else None
                                 ),
                             }
                         )
@@ -120,9 +118,7 @@ def enum_asreproast(args, cache):
                             # Skip if it looks like a status indicator
                             if username not in ("[*]", "[+]", "[-]", "[!]"):
                                 if not username.endswith("$"):
-                                    if username not in [
-                                        a["username"] for a in asreproastable
-                                    ]:
+                                    if username not in [a["username"] for a in asreproastable]:
                                         asreproastable.append(
                                             {
                                                 "username": username,
@@ -192,8 +188,12 @@ def enum_asreproast(args, cache):
         combined = stdout + stderr
         combined_lower = combined.lower()
         ldap_failure_indicators = [
-            "failed to connect", "connection refused", "timed out",
-            "ldap ping failed", "failed to create connection", "kerberos sessionerror",
+            "failed to connect",
+            "connection refused",
+            "timed out",
+            "ldap ping failed",
+            "failed to create connection",
+            "kerberos sessionerror",
         ]
         if RE_NO_ENTRIES.search(combined):
             status("No AS-REP roastable accounts found", "success")

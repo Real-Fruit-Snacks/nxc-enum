@@ -70,7 +70,7 @@ def is_nxc_noise_line(line: str) -> bool:
             "╭─",  # Top border of Rich traceback box
             "│ ",  # Side border of Rich traceback box
             "╰─",  # Bottom border of Rich traceback box
-            "❱",   # Rich error marker pointing to the error line
+            "❱",  # Rich error marker pointing to the error line
         )
     ):
         return True

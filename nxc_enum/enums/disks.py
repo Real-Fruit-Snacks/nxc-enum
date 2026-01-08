@@ -123,10 +123,7 @@ def enum_disks(args, cache, is_admin: bool = False):
 
             # Highlight non-system drives
             if drive != "C:":
-                output(
-                    f"{c(drive, Colors.GREEN + Colors.BOLD):<10} "
-                    f"{disk_type:<15} {size}"
-                )
+                output(f"{c(drive, Colors.GREEN + Colors.BOLD):<10} " f"{disk_type:<15} {size}")
             else:
                 output(f"{drive:<10} {disk_type:<15} {size}")
 

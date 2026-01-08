@@ -140,9 +140,7 @@ def enum_pso(args, cache):
 
         reversible_match = RE_REVERSIBLE.search(line)
         if reversible_match:
-            current_pso["reversible_encryption"] = (
-                reversible_match.group(1).upper() == "TRUE"
-            )
+            current_pso["reversible_encryption"] = reversible_match.group(1).upper() == "TRUE"
 
         lockout_match = RE_LOCKOUT_THRESHOLD.search(line)
         if lockout_match:
@@ -245,8 +243,7 @@ def enum_pso(args, cache):
 
         # Summarize weak PSOs
         weak_psos = [
-            p for p in pso_list
-            if p.get("min_length", 99) < 8 or not p.get("complexity", True)
+            p for p in pso_list if p.get("min_length", 99) < 8 or not p.get("complexity", True)
         ]
         if weak_psos:
             output(

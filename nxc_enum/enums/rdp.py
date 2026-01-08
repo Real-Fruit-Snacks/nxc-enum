@@ -113,9 +113,7 @@ def enum_rdp(args, cache):
                 )
             )
         elif rdp_info["nla_required"] is False:
-            output(
-                f"  {c('[!]', Colors.RED)} NLA: {c('Not Required', Colors.RED + Colors.BOLD)}"
-            )
+            output(f"  {c('[!]', Colors.RED)} NLA: {c('Not Required', Colors.RED + Colors.BOLD)}")
             output(
                 c(
                     "      May be vulnerable to MITM and BlueKeep-style attacks",

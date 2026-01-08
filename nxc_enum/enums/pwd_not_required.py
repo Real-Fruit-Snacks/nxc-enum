@@ -245,7 +245,7 @@ def enum_pwd_not_required(args, cache):
 
             if enabled_accounts:
                 enabled_names = [a["username"] for a in enabled_accounts[:3]]
-                names_str = ', '.join(enabled_names)
+                names_str = ", ".join(enabled_names)
                 cache.add_next_step(
                     finding=f"PASSWD_NOTREQD accounts: {names_str}",
                     command=f"nxc smb {target} -u '{enabled_names[0]}' -p ''",
@@ -423,9 +423,14 @@ def enum_pwd_not_required(args, cache):
         # Check if LDAP actually failed before claiming "no accounts found"
         combined = (stdout + stderr).lower()
         ldap_failure_indicators = [
-            "failed to connect", "connection refused", "timed out",
-            "ldap ping failed", "status_logon_failure", "status_access_denied",
-            "failed to create connection", "kerberos sessionerror",
+            "failed to connect",
+            "connection refused",
+            "timed out",
+            "ldap ping failed",
+            "status_logon_failure",
+            "status_access_denied",
+            "failed to create connection",
+            "kerberos sessionerror",
         ]
         if any(ind in combined for ind in ldap_failure_indicators) or rc != 0:
             status("LDAP unavailable - cannot check PASSWD_NOTREQD accounts", "error")

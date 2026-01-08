@@ -243,9 +243,7 @@ def probe_anonymous_sessions(
 
     # LDAP Anonymous Bind
     status("Probing LDAP anonymous bind...", "info")
-    ldap_success, ldap_stdout, ldap_stderr, ldap_conn_failed = probe_ldap_anonymous(
-        target, timeout
-    )
+    ldap_success, ldap_stdout, ldap_stderr, ldap_conn_failed = probe_ldap_anonymous(target, timeout)
 
     if ldap_success:
         result.ldap_anonymous = True

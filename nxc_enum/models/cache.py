@@ -407,12 +407,14 @@ class EnumCache:
                 uac_val = int(uac) if uac else 0
                 if uac_val & PASSWD_NOTREQD:
                     is_disabled = bool(uac_val & ACCOUNTDISABLE)
-                    pwd_not_required.append({
-                        "username": username,
-                        "is_disabled": is_disabled,
-                        "uac_value": uac_val,
-                        "status": "disabled" if is_disabled else "enabled",
-                    })
+                    pwd_not_required.append(
+                        {
+                            "username": username,
+                            "is_disabled": is_disabled,
+                            "uac_value": uac_val,
+                            "status": "disabled" if is_disabled else "enabled",
+                        }
+                    )
             except (ValueError, TypeError):
                 continue
 
@@ -538,11 +540,13 @@ class EnumCache:
                 sam = sam[0] if sam else ""
 
             if cn or sam:
-                gmsa_accounts.append({
-                    "name": cn or sam.rstrip("$"),
-                    "sam": sam or f"{cn}$",
-                    "has_password_id": bool(pwd_id),
-                })
+                gmsa_accounts.append(
+                    {
+                        "name": cn or sam.rstrip("$"),
+                        "sam": sam or f"{cn}$",
+                        "has_password_id": bool(pwd_id),
+                    }
+                )
 
         return gmsa_accounts if gmsa_accounts else None
 
@@ -666,8 +670,7 @@ class EnumCache:
         # Fetches data for: kerberoastable, asreproast, admin_count, pwd_not_required, descriptions
         user_batch_filter = "(&(objectCategory=person)(objectClass=user))"
         user_batch_attrs = (
-            "sAMAccountName servicePrincipalName userAccountControl "
-            "adminCount description"
+            "sAMAccountName servicePrincipalName userAccountControl " "adminCount description"
         )
 
         # Batch query: Computer and gMSA attributes
@@ -692,8 +695,7 @@ class EnumCache:
                 "ldap_user_batch",
             ),
             "ldap_computer_batch": (
-                ["ldap", target] + auth +
-                ["--query", computer_batch_filter, computer_batch_attrs],
+                ["ldap", target] + auth + ["--query", computer_batch_filter, computer_batch_attrs],
                 "ldap_computer_batch",
             ),
         }
@@ -708,10 +710,7 @@ class EnumCache:
         workers = PROXY_CACHE_PRIME_WORKERS if is_proxy_mode() else CACHE_PRIME_WORKERS
         with ThreadPoolExecutor(max_workers=workers) as executor:
             # Submit all queries
-            futures = {
-                executor.submit(fetch_query, args): name
-                for args, name in queries.values()
-            }
+            futures = {executor.submit(fetch_query, args): name for args, name in queries.values()}
 
             # Collect results
             for future in futures:
@@ -735,9 +734,7 @@ class EnumCache:
         self.pass_pol = results.get("pass_pol", (-1, "", "Not fetched"))
         self.ldap_users = results.get("ldap_users", (-1, "", "Not fetched"))
         self.ldap_user_batch = results.get("ldap_user_batch", (-1, "", "Not fetched"))
-        self.ldap_computer_batch = results.get(
-            "ldap_computer_batch", (-1, "", "Not fetched")
-        )
+        self.ldap_computer_batch = results.get("ldap_computer_batch", (-1, "", "Not fetched"))
 
         # Determine LDAP availability from connection result
         # Check both stdout and stderr for LDAP failure indicators
@@ -750,18 +747,14 @@ class EnumCache:
             "ldap ping failed",
             "error",
         ]
-        if ldap_result[0] != 0 or any(
-            ind in ldap_combined for ind in ldap_failure_indicators
-        ):
+        if ldap_result[0] != 0 or any(ind in ldap_combined for ind in ldap_failure_indicators):
             self.ldap_available = False
 
         # Parse batch query results if successful
         if self.ldap_user_batch and self.ldap_user_batch[0] == 0:
             self.user_batch_parsed = self._parse_ldap_batch(self.ldap_user_batch[1])
         if self.ldap_computer_batch and self.ldap_computer_batch[0] == 0:
-            self.computer_batch_parsed = self._parse_ldap_batch(
-                self.ldap_computer_batch[1]
-            )
+            self.computer_batch_parsed = self._parse_ldap_batch(self.ldap_computer_batch[1])
 
         # Debug output for cached results
         for args, name in queries.values():

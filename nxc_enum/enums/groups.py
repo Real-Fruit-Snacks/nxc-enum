@@ -102,8 +102,12 @@ def parse_verbose_group_output(stdout: str) -> dict:
 
 
 def get_group_members(
-    target: str, auth: list, group_name: str, timeout: int, cn_to_sam: dict = None,
-    capture_debug: bool = False
+    target: str,
+    auth: list,
+    group_name: str,
+    timeout: int,
+    cn_to_sam: dict = None,
+    capture_debug: bool = False,
 ) -> tuple:
     """Query members of a specific group via LDAP.
 
@@ -334,8 +338,12 @@ def enum_groups(args, cache):
             def fetch_members(group_name):
                 # Capture debug info instead of printing from worker thread
                 members, reason, dbg_info = get_group_members(
-                    target, cache.auth_args, group_name, args.timeout,
-                    cn_to_sam=cn_to_sam, capture_debug=True
+                    target,
+                    cache.auth_args,
+                    group_name,
+                    args.timeout,
+                    cn_to_sam=cn_to_sam,
+                    capture_debug=True,
                 )
                 return group_name, members, reason, dbg_info
 

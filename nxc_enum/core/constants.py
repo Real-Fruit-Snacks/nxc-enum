@@ -110,8 +110,8 @@ SERVICE_PORTS = {
     "rdp": 3389,
     "mssql": 1433,
     "ftp": 21,
-    "nfs": 2049,     # NFS RPC portmapper uses 111, but 2049 is standard NFS port
-    "winrm": 5985,   # WinRM HTTP
+    "nfs": 2049,  # NFS RPC portmapper uses 111, but 2049 is standard NFS port
+    "winrm": 5985,  # WinRM HTTP
     "winrms": 5986,  # WinRM HTTPS
     "ssh": 22,
 }
@@ -121,7 +121,7 @@ VNC_PORTS = (5900, 5901, 5902, 5903, 5800, 5801)
 
 # Pre-scan configuration
 SERVICE_PRESCAN_TIMEOUT = 1.0  # Fast timeout for service port checks (seconds)
-SERVICE_PRESCAN_WORKERS = 10   # Concurrent workers for service pre-scanning
+SERVICE_PRESCAN_WORKERS = 10  # Concurrent workers for service pre-scanning
 
 # ============================================================================
 # PROXY MODE CONFIGURATION

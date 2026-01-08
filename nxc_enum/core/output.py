@@ -220,10 +220,7 @@ def _is_debug_noise_line(line: str) -> bool:
     if not line.strip():
         return True
     # Skip Rich-formatted traceback lines (box-drawing characters)
-    if any(
-        char in line
-        for char in ("╭─", "│ ", "╰─", "❱")
-    ):
+    if any(char in line for char in ("╭─", "│ ", "╰─", "❱")):
         return True
     # Skip Python traceback markers
     if "Traceback (most recent call last)" in line:
@@ -354,6 +351,7 @@ def get_json_data_copy() -> dict:
     Returns a copy to avoid mutation issues.
     """
     import copy
+
     return copy.deepcopy(JSON_DATA)
 
 
@@ -401,11 +399,7 @@ def print_discovery_results(
         verbose: If True, show detailed table with hostname/domain/signing
     """
     # Filter to only reachable hosts
-    live_hosts = {
-        host: info
-        for host, (reachable, info) in smb_results.items()
-        if reachable
-    }
+    live_hosts = {host: info for host, (reachable, info) in smb_results.items() if reachable}
 
     output("")
     output(c("=" * 70, Colors.CYAN))
@@ -486,15 +480,17 @@ def get_discovery_json(
 
     for host, (reachable, info) in smb_results.items():
         if reachable:
-            discovered_hosts.append({
-                "ip": host,
-                "hostname": info.get("hostname"),
-                "fqdn": info.get("fqdn"),
-                "domain": info.get("dns_domain"),
-                "domain_netbios": info.get("domain_name"),
-                "signing_required": info.get("signing_required"),
-                "smbv1_enabled": info.get("smbv1_enabled"),
-            })
+            discovered_hosts.append(
+                {
+                    "ip": host,
+                    "hostname": info.get("hostname"),
+                    "fqdn": info.get("fqdn"),
+                    "domain": info.get("dns_domain"),
+                    "domain_netbios": info.get("domain_name"),
+                    "signing_required": info.get("signing_required"),
+                    "smbv1_enabled": info.get("smbv1_enabled"),
+                }
+            )
 
     # Sort by IP
     discovered_hosts.sort(key=lambda x: x["ip"])

@@ -170,7 +170,7 @@ def enum_mssql(args, cache):
             output("")
 
         # Add to next steps
-        priv_level = 'sysadmin' if mssql_info['is_sysadmin'] else 'standard user'
+        priv_level = "sysadmin" if mssql_info["is_sysadmin"] else "standard user"
         cache.add_next_step(
             finding=f"MSSQL authenticated ({priv_level})",
             command=f"nxc mssql {target} {auth_str} -q 'SELECT name FROM sysdatabases'",

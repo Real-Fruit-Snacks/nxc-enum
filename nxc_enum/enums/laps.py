@@ -68,8 +68,7 @@ def enum_laps(args, cache):
 
         # Query for computers with LAPS attribute
         query_args = (
-            ["ldap", target] + auth +
-            ["--query", combined_filter, "cn,ms-Mcs-AdmPwdExpirationTime"]
+            ["ldap", target] + auth + ["--query", combined_filter, "cn,ms-Mcs-AdmPwdExpirationTime"]
         )
         rc, stdout, stderr = run_nxc(query_args, args.timeout)
         debug_nxc(query_args, stdout, stderr, "LAPS Query")

@@ -21,49 +21,116 @@ DCOM_PORT = 135
 
 # iOXIDResolver ServerAlive2 request
 # This is a minimal DCE/RPC request to the IObjectExporter interface
-IOXID_REQUEST = bytes([
-    # DCE/RPC Header
-    0x05, 0x00,  # Version 5.0
-    0x0b,        # Packet type: bind
-    0x03,        # Flags: first frag, last frag
-    0x10, 0x00, 0x00, 0x00,  # Data representation (little endian)
-    0x48, 0x00,  # Frag length
-    0x00, 0x00,  # Auth length
-    0x01, 0x00, 0x00, 0x00,  # Call ID
-    # Bind context
-    0xb8, 0x10,  # Max xmit frag
-    0xb8, 0x10,  # Max recv frag
-    0x00, 0x00, 0x00, 0x00,  # Assoc group
-    0x01,        # Number of context items
-    0x00, 0x00, 0x00,  # Reserved
-    # Context item
-    0x00, 0x00,  # Context ID
-    0x01,        # Number of transfer syntaxes
-    0x00,        # Reserved
-    # IObjectExporter UUID: 99fcfec4-5260-101b-bbcb-00aa0021347a
-    0xc4, 0xfe, 0xfc, 0x99, 0x60, 0x52, 0x1b, 0x10,
-    0xbb, 0xcb, 0x00, 0xaa, 0x00, 0x21, 0x34, 0x7a,
-    0x00, 0x00,  # Version 0.0
-    # Transfer syntax: NDR 8a885d04-1ceb-11c9-9fe8-08002b104860
-    0x04, 0x5d, 0x88, 0x8a, 0xeb, 0x1c, 0xc9, 0x11,
-    0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60,
-    0x02, 0x00, 0x00, 0x00,  # Version 2.0
-])
+IOXID_REQUEST = bytes(
+    [
+        # DCE/RPC Header
+        0x05,
+        0x00,  # Version 5.0
+        0x0B,  # Packet type: bind
+        0x03,  # Flags: first frag, last frag
+        0x10,
+        0x00,
+        0x00,
+        0x00,  # Data representation (little endian)
+        0x48,
+        0x00,  # Frag length
+        0x00,
+        0x00,  # Auth length
+        0x01,
+        0x00,
+        0x00,
+        0x00,  # Call ID
+        # Bind context
+        0xB8,
+        0x10,  # Max xmit frag
+        0xB8,
+        0x10,  # Max recv frag
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # Assoc group
+        0x01,  # Number of context items
+        0x00,
+        0x00,
+        0x00,  # Reserved
+        # Context item
+        0x00,
+        0x00,  # Context ID
+        0x01,  # Number of transfer syntaxes
+        0x00,  # Reserved
+        # IObjectExporter UUID: 99fcfec4-5260-101b-bbcb-00aa0021347a
+        0xC4,
+        0xFE,
+        0xFC,
+        0x99,
+        0x60,
+        0x52,
+        0x1B,
+        0x10,
+        0xBB,
+        0xCB,
+        0x00,
+        0xAA,
+        0x00,
+        0x21,
+        0x34,
+        0x7A,
+        0x00,
+        0x00,  # Version 0.0
+        # Transfer syntax: NDR 8a885d04-1ceb-11c9-9fe8-08002b104860
+        0x04,
+        0x5D,
+        0x88,
+        0x8A,
+        0xEB,
+        0x1C,
+        0xC9,
+        0x11,
+        0x9F,
+        0xE8,
+        0x08,
+        0x00,
+        0x2B,
+        0x10,
+        0x48,
+        0x60,
+        0x02,
+        0x00,
+        0x00,
+        0x00,  # Version 2.0
+    ]
+)
 
 # ServerAlive2 request (after bind)
-SERVERALIVE2_REQUEST = bytes([
-    # DCE/RPC Header
-    0x05, 0x00,  # Version 5.0
-    0x00,        # Packet type: request
-    0x03,        # Flags: first frag, last frag
-    0x10, 0x00, 0x00, 0x00,  # Data representation
-    0x18, 0x00,  # Frag length
-    0x00, 0x00,  # Auth length
-    0x02, 0x00, 0x00, 0x00,  # Call ID
-    0x00, 0x00, 0x00, 0x00,  # Alloc hint
-    0x00, 0x00,  # Context ID
-    0x05, 0x00,  # Opnum: ServerAlive2
-])
+SERVERALIVE2_REQUEST = bytes(
+    [
+        # DCE/RPC Header
+        0x05,
+        0x00,  # Version 5.0
+        0x00,  # Packet type: request
+        0x03,  # Flags: first frag, last frag
+        0x10,
+        0x00,
+        0x00,
+        0x00,  # Data representation
+        0x18,
+        0x00,  # Frag length
+        0x00,
+        0x00,  # Auth length
+        0x02,
+        0x00,
+        0x00,
+        0x00,  # Call ID
+        0x00,
+        0x00,
+        0x00,
+        0x00,  # Alloc hint
+        0x00,
+        0x00,  # Context ID
+        0x05,
+        0x00,  # Opnum: ServerAlive2
+    ]
+)
 
 
 def query_ioxid(host: str, timeout: float = 5.0) -> list:
@@ -86,7 +153,7 @@ def query_ioxid(host: str, timeout: float = 5.0) -> list:
                 return addresses
 
             # Check for bind_ack (type 0x0c)
-            if response[2] != 0x0c:
+            if response[2] != 0x0C:
                 return addresses
 
             # Send ServerAlive2 request
@@ -116,7 +183,7 @@ def query_ioxid(host: str, timeout: float = 5.0) -> list:
             i = 0
             while i < len(response) - 4:
                 # Look for the ncacn_ip_tcp tower identifier
-                if response[i:i+6] == b"ncacn":
+                if response[i : i + 6] == b"ncacn":
                     # Find the IP after it
                     j = i + 6
                     while j < len(response) - 4:

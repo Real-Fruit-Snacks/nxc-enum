@@ -373,8 +373,7 @@ def enum_shares(args, cache):
                 first_share = file_shares[0]
                 if args.user:
                     smbclient_cmd = (
-                        f"smbclient //{target}/{first_share} "
-                        f"-U '{args.user}%<password>'"
+                        f"smbclient //{target}/{first_share} " f"-U '{args.user}%<password>'"
                     )
                 else:
                     smbclient_cmd = f"smbclient //{target}/{first_share} -U '<user>%<password>'"
@@ -388,9 +387,7 @@ def enum_shares(args, cache):
         # Store share names for aggregated copy-paste section
         cache.copy_paste_data["share_names"].update(s[0] for s in shares)
         # Store UNC paths for multi-target aggregation (includes target IP)
-        cache.copy_paste_data["share_unc_paths"].update(
-            f"\\\\{target}\\{s[0]}" for s in shares
-        )
+        cache.copy_paste_data["share_unc_paths"].update(f"\\\\{target}\\{s[0]}" for s in shares)
     else:
         # No shares parsed - check for access denied or other errors
         combined = stdout + stderr

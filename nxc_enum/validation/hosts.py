@@ -123,9 +123,7 @@ def extract_hostname_from_smb(cache) -> None:
         cache.domain_info["domain_name"] = dns_domain.split(".")[0].upper()
 
 
-def check_hosts_resolution_from_info(
-    target_ip: str, smb_info: dict
-) -> Tuple[bool, Optional[str]]:
+def check_hosts_resolution_from_info(target_ip: str, smb_info: dict) -> Tuple[bool, Optional[str]]:
     """Check hosts resolution using pre-extracted SMB info.
 
     This avoids a second SMB call since validate_host_smb() already extracted

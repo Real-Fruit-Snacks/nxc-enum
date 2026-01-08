@@ -193,8 +193,14 @@ def enum_admin_count(args, cache):
         status("Using cached batch data for adminCount accounts...")
         accounts = batch_accounts
         account_details = [
-            {"name": a, "groups": [], "account_type": None,
-             "admin_count_set": None, "protected_by": None, "status": None}
+            {
+                "name": a,
+                "groups": [],
+                "account_type": None,
+                "admin_count_set": None,
+                "protected_by": None,
+                "status": None,
+            }
             for a in accounts
         ]
 
@@ -216,7 +222,7 @@ def enum_admin_count(args, cache):
                     for acct in classified["users"]:
                         _print_account_detail(acct)
                 if classified["service_accounts"]:
-                    svc_count = len(classified['service_accounts'])
+                    svc_count = len(classified["service_accounts"])
                     output(c(f"  Service Accounts ({svc_count})", Colors.YELLOW))
                     for acct in classified["service_accounts"]:
                         _print_account_detail(acct)
@@ -239,8 +245,11 @@ def enum_admin_count(args, cache):
             status("No accounts with adminCount attribute found", "info")
 
         if args.json_output:
-            JSON_DATA["admin_count"] = {"accounts": accounts, "details": account_details,
-                                        "summary": {"total": len(accounts)}}
+            JSON_DATA["admin_count"] = {
+                "accounts": accounts,
+                "details": account_details,
+                "summary": {"total": len(accounts)},
+            }
         return
 
     # Fall back to LDAP query if batch data unavailable

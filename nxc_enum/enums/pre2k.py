@@ -115,8 +115,12 @@ def enum_pre2k(args, cache):
         combined = stdout + stderr
         combined_lower = combined.lower()
         ldap_failure_indicators = [
-            "failed to connect", "connection refused", "timed out",
-            "ldap ping failed", "failed to create connection", "kerberos sessionerror",
+            "failed to connect",
+            "connection refused",
+            "timed out",
+            "ldap ping failed",
+            "failed to create connection",
+            "kerberos sessionerror",
         ]
         if "STATUS_ACCESS_DENIED" in combined.upper():
             status("Access denied - cannot check pre-2K computers", "error")

@@ -70,9 +70,7 @@ def enum_kerberoastable(args, cache):
             if "Response for object:" in line and "CN=" in line:
                 # Save previous user if exists
                 if current_user:
-                    kerberoastable.append(
-                        {"username": current_user, "spns": current_spns or None}
-                    )
+                    kerberoastable.append({"username": current_user, "spns": current_spns or None})
 
                 # Skip Domain Controllers
                 if "OU=Domain Controllers" in line:
@@ -181,9 +179,14 @@ def enum_kerberoastable(args, cache):
         # Check if LDAP actually failed before claiming "no accounts found"
         combined = (stdout + stderr).lower()
         ldap_failure_indicators = [
-            "failed to connect", "connection refused", "timed out",
-            "ldap ping failed", "status_logon_failure", "status_access_denied",
-            "failed to create connection", "kerberos sessionerror",
+            "failed to connect",
+            "connection refused",
+            "timed out",
+            "ldap ping failed",
+            "status_logon_failure",
+            "status_access_denied",
+            "failed to create connection",
+            "kerberos sessionerror",
         ]
         if any(ind in combined for ind in ldap_failure_indicators) or rc != 0:
             status("LDAP unavailable - cannot enumerate Kerberoastable accounts", "error")

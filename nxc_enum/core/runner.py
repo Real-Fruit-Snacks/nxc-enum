@@ -176,9 +176,7 @@ def validate_host_smb(target: str, timeout: int = 10) -> Tuple[bool, dict]:
 
     # Host is reachable if we got ANY SMB response
     # [*] indicates banner received, STATUS_ indicates protocol-level response
-    is_reachable = bool(
-        "[*]" in combined or "[+]" in combined or "STATUS_" in combined.upper()
-    )
+    is_reachable = bool("[*]" in combined or "[+]" in combined or "STATUS_" in combined.upper())
 
     info = {
         "hostname": None,
@@ -295,9 +293,7 @@ def parallel_smb_validation(
     completed = 0
 
     with ThreadPoolExecutor(max_workers=min(len(targets), effective_workers)) as executor:
-        futures = {
-            executor.submit(validate_host_smb, t, timeout): t for t in targets
-        }
+        futures = {executor.submit(validate_host_smb, t, timeout): t for t in targets}
         for future in as_completed(futures):
             host = futures[future]
             completed += 1

@@ -308,9 +308,14 @@ def enum_delegation(args, cache):
         # Check if LDAP actually failed before claiming "no configurations found"
         combined = (stdout + stderr).lower()
         ldap_failure_indicators = [
-            "failed to connect", "connection refused", "timed out",
-            "ldap ping failed", "status_logon_failure", "status_access_denied",
-            "failed to create connection", "kerberos sessionerror",
+            "failed to connect",
+            "connection refused",
+            "timed out",
+            "ldap ping failed",
+            "status_logon_failure",
+            "status_access_denied",
+            "failed to create connection",
+            "kerberos sessionerror",
         ]
         if any(ind in combined for ind in ldap_failure_indicators) or rc != 0:
             status("LDAP unavailable - cannot enumerate delegation configurations", "error")
