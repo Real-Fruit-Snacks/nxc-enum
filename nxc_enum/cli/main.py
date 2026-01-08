@@ -15,21 +15,47 @@ import os
 import sys
 import time
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from ..core.colors import Colors, c
-from ..core.constants import RE_ANSI_ESCAPE
+from ..core.constants import (
+    MULTI_TARGET_WORKERS,
+    PRESCAN_THRESHOLD,
+    PROXY_DEFAULT_COMMAND_TIMEOUT,
+    PROXY_MULTI_TARGET_WORKERS,
+    RE_ANSI_ESCAPE,
+)
 from ..core.output import (
     JSON_DATA,
     OUTPUT_BUFFER,
+    get_discovery_json,
+    get_json_data_copy,
+    get_output_buffer_copy,
+    get_per_target_filename,
+    get_target_local,
+    get_target_print_lock,
+    is_proxy_mode,
     output,
+    output_direct,
     print_banner,
+    print_discovery_results,
+    print_section,
     print_target_footer,
     print_target_header,
     set_debug_mode,
     set_output_file_requested,
+    set_proxy_mode,
+    set_target_parallel_mode,
     status,
 )
 from ..core.parallel import run_parallel_modules
-from ..core.runner import run_nxc
+from ..core.runner import (
+    parallel_port_prescan,
+    parallel_prescan_services,
+    parallel_smb_validation,
+    run_nxc,
+    validate_host_smb,
+)
 
 # Import all enum functions
 from ..enums import (
@@ -47,7 +73,6 @@ from ..enums import (
     enum_domain_intel,
     enum_ftp,
     enum_groups,
-    enum_kerberoastable,
     enum_laps,
     enum_ldap_signing,
     enum_listeners,
@@ -92,13 +117,15 @@ from ..reporting import (
     print_next_steps,
 )
 from ..validation.anonymous import probe_anonymous_sessions
-from ..validation.hosts import early_hosts_check
+from ..validation.hosts import check_hosts_resolution_from_info
 from ..validation.multi import validate_credentials_multi
 from ..validation.single import validate_credentials
 from .args import create_parser
 
 
-def _run_single_target(args, target: str, creds: list) -> TargetResult:
+def _run_single_target(
+    args, target: str, creds: list, smb_cache: dict | None = None
+) -> TargetResult:
     """Run enumeration against a single target.
 
     This is the core enumeration logic extracted from main() to support
@@ -108,6 +135,7 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
         args: Parsed command-line arguments
         target: Single target IP/hostname to scan
         creds: List of credentials (parsed from args)
+        smb_cache: Optional pre-computed SMB validation results from parallel pre-scan
 
     Returns:
         TargetResult with status, cache, and elapsed time
@@ -115,25 +143,51 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
     target_start = time.time()
 
     # ─────────────────────────────────────────────────────────────────────────
-    # EARLY HOSTS RESOLUTION CHECK (before any enumeration)
+    # SMB REACHABILITY CHECK (use cache if available, else validate)
     # ─────────────────────────────────────────────────────────────────────────
-    if not args.skip_hosts_check:
-        success, hosts_line = early_hosts_check(target, args.timeout)
-        if not success:
-            status("DC hostname does not resolve to target IP", "error")
-            output(f"  Add to /etc/hosts: {c(hosts_line, Colors.YELLOW)}")
-            output("")
-            status(
-                "Use --skip-hosts-check to bypass this check (not recommended)",
-                "info",
-            )
-            elapsed = time.time() - target_start
-            return TargetResult(
-                target=target,
-                status="failed",
-                error="DC hostname resolution failed - add entry to /etc/hosts",
-                elapsed_time=elapsed,
-            )
+    if smb_cache and target in smb_cache:
+        # Use pre-computed validation from parallel pre-scan
+        is_reachable, smb_info = smb_cache[target]
+    else:
+        # No cache - validate now
+        status("Checking SMB reachability...", "info")
+        is_reachable, smb_info = validate_host_smb(target, timeout=args.timeout)
+
+    if not is_reachable:
+        status("Host not responding to SMB - skipping", "warning")
+        elapsed = time.time() - target_start
+        return TargetResult(
+            target=target,
+            status="skipped",
+            error="Host unreachable (no SMB response)",
+            elapsed_time=elapsed,
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # HOSTS RESOLUTION CHECK (uses data from SMB validation - no second call)
+    # ─────────────────────────────────────────────────────────────────────────
+    if is_proxy_mode():
+        # Skip hostname validation in proxy mode (DNS bypasses proxy)
+        status("Hostname validation skipped in proxy mode (use IP addresses)", "info")
+    elif not args.skip_hosts_check:
+        # Only check if we got hostname data from SMB banner
+        if smb_info.get("fqdn"):
+            success, hosts_line = check_hosts_resolution_from_info(target, smb_info)
+            if not success:
+                status("Target hostname does not resolve to target IP", "error")
+                output(f"  Add to /etc/hosts: {c(hosts_line, Colors.YELLOW)}")
+                output("")
+                status(
+                    "Use --skip-hosts-check to bypass this check (not recommended)",
+                    "info",
+                )
+                elapsed = time.time() - target_start
+                return TargetResult(
+                    target=target,
+                    status="failed",
+                    error="Hostname resolution failed - add entry to /etc/hosts",
+                    elapsed_time=elapsed,
+                )
     else:
         status("Skipping hosts resolution check (--skip-hosts-check)", "warning")
 
@@ -286,6 +340,78 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
                 elapsed_time=elapsed,
             )
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # VALIDATE-ONLY MODE - Skip enumeration, just show credential results
+    # ─────────────────────────────────────────────────────────────────────────
+    if args.validate_only:
+        elapsed = time.time() - target_start
+        print_section("Credential Validation Results", target)
+
+        # Show target info
+        hostname = smb_info.get("hostname", "")
+        domain = smb_info.get("dns_domain", args.domain or "")
+        if hostname:
+            status(f"Target: {target} ({hostname})")
+        else:
+            status(f"Target: {target}")
+        if domain:
+            status(f"Domain: {domain}")
+
+        output("")
+
+        # Show validated credentials
+        if multi_cred_mode:
+            admin_creds = [cred for cred in working_creds if cred.is_admin]
+            std_creds = [cred for cred in working_creds if not cred.is_admin]
+
+            status(f"Validated {len(working_creds)} credential(s)", "success")
+            output("")
+
+            if admin_creds:
+                output(c("LOCAL ADMIN CREDENTIALS", Colors.RED + Colors.BOLD))
+                output(f"{'-'*50}")
+                for cred in admin_creds:
+                    auth_type = "password" if cred.password else "hash"
+                    cred_str = cred.password if cred.password else cred.hash[:32] + "..."
+                    output(
+                        f"  {c('[ADMIN]', Colors.RED)} {cred.username}:{cred_str} ({auth_type})"
+                    )
+                output("")
+
+            if std_creds:
+                output(c("STANDARD CREDENTIALS", Colors.GREEN))
+                output(f"{'-'*50}")
+                for cred in std_creds:
+                    auth_type = "password" if cred.password else "hash"
+                    cred_str = cred.password if cred.password else cred.hash[:32] + "..."
+                    output(f"  {cred.username}:{cred_str} ({auth_type})")
+                output("")
+
+            # Summary
+            if admin_creds:
+                status(
+                    f"{len(admin_creds)} admin credential(s) - can run privileged modules!",
+                    "warning",
+                )
+        else:
+            # Single credential
+            cred = working_creds[0]
+            auth_type = "password" if cred.password else "hash"
+            if cred.is_admin:
+                status(f"Valid: {cred.username} ({auth_type}) - LOCAL ADMIN!", "success")
+            else:
+                status(f"Valid: {cred.username} ({auth_type})", "success")
+
+        output("")
+        status(f"Completed in {elapsed:.2f}s")
+
+        return TargetResult(
+            target=target,
+            status="success",
+            cache=cache,
+            elapsed_time=elapsed,
+        )
+
     # Determine which modules to run
     run_all = args.all or not any(
         (
@@ -328,6 +454,21 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
     if run_all:
         # Phase 1: Parallel port scanning
         enum_listeners(args, listener_results, cache)
+        cache.listener_results = listener_results  # Store for use by other modules
+
+        # Phase 1.5: Service port pre-scan (determines which protocols are available)
+        # This saves ~30-60 seconds per unreachable service during enumeration
+        status("Pre-scanning service ports...", "info")
+        service_results = parallel_prescan_services(target)
+        cache.apply_service_prescan(service_results)
+
+        # Log service availability (helps user understand what will be skipped)
+        available_services = [svc for svc, avail in service_results.items() if avail]
+        unavailable_services = [svc for svc, avail in service_results.items() if not avail]
+        if available_services:
+            status(f"Services available: {', '.join(available_services)}", "success")
+        if unavailable_services:
+            status(f"Services unavailable: {', '.join(unavailable_services)}", "info")
 
         # Phase 2: Parallel cache priming
         status("Priming caches in parallel...", "info")
@@ -342,32 +483,17 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
         enum_groups(args, cache)
 
         if multi_cred_mode:
-            # Multi-cred mode
-            enum_policies(args, cache)
-            enum_computers(args, cache)
-            enum_kerberoastable(args, cache)
-            enum_asreproast(args, cache)
-            enum_delegation(args, cache)
-            enum_maq(args, cache)
-            enum_adcs(args, cache)
-            enum_dc_list(args, cache)
-            enum_pwd_not_required(args, cache)
-            enum_admin_count(args, cache)
-            enum_signing(args, cache)
-            enum_webdav(args, cache)
-            enum_dns(args, cache)
-            enum_laps(args, cache)
-            enum_ldap_signing(args, cache)
-            enum_local_groups(args, cache)
-            enum_subnets(args, cache)
-            enum_pre2k(args, cache)
-            enum_bitlocker(args, cache)
-            enum_mssql(args, cache)
-            enum_rdp(args, cache)
-            enum_ftp(args, cache)
-            enum_nfs(args, cache)
+            # Multi-cred mode: Run domain-wide modules in parallel, then per-credential modules
+            # Domain-wide modules query AD data that's the same regardless of credential
+            is_admin_multi = (
+                any(cred.is_admin for cred in working_creds) if working_creds else False
+            )
+            run_parallel_modules(args, cache, is_admin_multi)
 
-            # Per-user modules
+            # BitLocker requires admin
+            enum_bitlocker(args, cache, is_admin_multi)
+
+            # Per-credential modules: These compare access levels across credentials
             enum_shares_multi(args, working_creds, multi_results, cache)
             enum_sessions_multi(args, working_creds, multi_results, cache)
             enum_loggedon_multi(args, working_creds, multi_results, cache)
@@ -377,30 +503,15 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
             print_executive_summary_multi(args, cache, working_creds, multi_results)
         else:
             # Single-cred mode
+            # run_parallel_modules now handles 20 modules in parallel:
+            # shares, policies, sessions, loggedon, printers, av, kerberoastable,
+            # delegation, pwd_not_required, maq, pre2k, dns, webdav, laps,
+            # ldap_signing, local_groups, mssql, rdp, ftp, nfs
             is_admin = working_creds[0].is_admin if working_creds else False
             run_parallel_modules(args, cache, is_admin)
 
-            enum_computers(args, cache)
-            enum_asreproast(args, cache)
-            enum_delegation(args, cache)
-            enum_maq(args, cache)
-            enum_adcs(args, cache)
-            enum_dc_list(args, cache)
-            enum_pwd_not_required(args, cache)
-            enum_admin_count(args, cache)
-            enum_signing(args, cache)
-            enum_webdav(args, cache)
-            enum_dns(args, cache)
-            enum_laps(args, cache)
-            enum_ldap_signing(args, cache)
-            enum_local_groups(args, cache)
-            enum_subnets(args, cache)
-            enum_pre2k(args, cache)
-            enum_bitlocker(args, cache)
-            enum_mssql(args, cache)
-            enum_rdp(args, cache)
-            enum_ftp(args, cache)
-            enum_nfs(args, cache)
+            # BitLocker requires admin and depends on computer list from parallel modules
+            enum_bitlocker(args, cache, is_admin)
 
             print_executive_summary(args, cache)
     else:
@@ -474,7 +585,8 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
         if args.pre2k:
             enum_pre2k(args, cache)
         if args.bitlocker:
-            enum_bitlocker(args, cache)
+            is_admin = working_creds[0].is_admin if working_creds else False
+            enum_bitlocker(args, cache, is_admin)
         if args.mssql:
             enum_mssql(args, cache)
         if args.rdp:
@@ -484,6 +596,9 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
         if args.nfs:
             enum_nfs(args, cache)
 
+    # Add target to successfully enumerated targets list
+    cache.copy_paste_data["targets"].add(target)
+
     # Print next steps for this target
     print_next_steps(args, cache)
 
@@ -491,12 +606,60 @@ def _run_single_target(args, target: str, creds: list) -> TargetResult:
     print_copy_paste_section(cache, args)
 
     elapsed = time.time() - target_start
+
+    # Capture per-target data for separate output files
+    target_json_data = get_json_data_copy()
+    target_output_lines = get_output_buffer_copy()
+
     return TargetResult(
         target=target,
         status="success",
         cache=cache,
         elapsed_time=elapsed,
+        json_data=target_json_data,
+        output_lines=target_output_lines,
     )
+
+
+def _run_target_parallel(
+    args, target: str, creds: list, smb_cache: dict, idx: int, total: int
+) -> tuple[TargetResult, list]:
+    """Run single target with buffered output for parallel multi-target execution.
+
+    This wrapper captures all output from _run_single_target() into a buffer,
+    allowing atomic printing to prevent output interleaving between targets.
+
+    Args:
+        args: Parsed command-line arguments
+        target: Target IP/hostname to scan
+        creds: List of credentials
+        smb_cache: Pre-computed SMB validation results
+        idx: Target index (1-indexed)
+        total: Total number of targets
+
+    Returns:
+        Tuple of (TargetResult, output_buffer_list)
+    """
+    _target_local = get_target_local()
+    _target_local.buffer = []
+
+    # Capture target header
+    print_target_header(target, idx, total)
+
+    # Run enumeration - all output goes to thread-local buffer
+    result = _run_single_target(args, target, creds, smb_cache)
+
+    # Capture target footer
+    print_target_footer(target, result.status, result.elapsed_time)
+
+    # Return result and captured output
+    return result, list(_target_local.buffer)
+
+
+def detect_proxychains() -> bool:
+    """Detect if running under proxychains via LD_PRELOAD environment variable."""
+    ld_preload = os.environ.get("LD_PRELOAD", "")
+    return "libproxychains" in ld_preload or "proxychains" in ld_preload
 
 
 def main():
@@ -509,6 +672,19 @@ def main():
     # Set global flags
     set_output_file_requested(bool(args.output))
     set_debug_mode(args.debug)
+
+    # Detect and apply proxy mode for proxychains/SOCKS compatibility
+    if args.proxy_mode or detect_proxychains():
+        set_proxy_mode(True)
+        if detect_proxychains() and not args.proxy_mode:
+            status("Proxychains detected - automatically enabling proxy mode", "info")
+        else:
+            status("Proxy mode enabled - reduced concurrency, increased timeouts", "info")
+
+        # Increase default timeout if user didn't override (30 is default)
+        if args.timeout == 30:
+            args.timeout = PROXY_DEFAULT_COMMAND_TIMEOUT
+            status(f"Command timeout increased to {args.timeout}s for proxy", "info")
 
     # Error if --json is used without -o (output file)
     if args.json_output and not args.output:
@@ -553,42 +729,283 @@ def main():
         status(f"Expanded to {len(targets)} targets", "info")
         output("")
 
+    # ─────────────────────────────────────────────────────────────────────────
+    # PARALLEL HOST DISCOVERY (for multi-target efficiency)
+    # ─────────────────────────────────────────────────────────────────────────
+    smb_validation_cache: dict = {}  # Cache SMB info to avoid re-validation in loop
+    original_target_count = len(targets)  # Track for discovery stats
+    port_open_count = 0  # Track hosts with port 445 open
+
+    # Auto-enable for multiple targets unless --no-prescan specified
+    # Also auto-enable for --discover-only regardless of target count
+    use_prescan = (
+        len(targets) > PRESCAN_THRESHOLD and not args.no_prescan
+    ) or args.discover_only
+
+    if use_prescan:
+        status(f"Pre-scanning {len(targets)} targets for SMB (port 445)...", "info")
+
+        # Phase 1: Fast TCP port scan
+        def port_progress(done: int, total: int) -> None:
+            if done % 50 == 0 or done == total:
+                status(f"Port scan: {done}/{total} hosts checked", "info")
+
+        live_targets = parallel_port_prescan(
+            targets,
+            port=445,
+            progress_callback=port_progress,
+        )
+
+        port_open_count = len(live_targets)  # Track for discovery stats
+        filtered = len(targets) - len(live_targets)
+        if filtered:
+            status(f"Filtered {filtered} hosts (port 445 closed/filtered)", "info")
+
+        if not live_targets:
+            if args.discover_only:
+                # For discover-only, print empty results gracefully
+                discovery_elapsed = time.time() - start_time
+                print_discovery_results(
+                    {}, original_target_count, 0, discovery_elapsed
+                )
+                return 0
+            status("No hosts responded on port 445 - nothing to enumerate", "error")
+            return 1
+
+        # Phase 2: Parallel SMB validation on live hosts
+        host_word = "host" if len(live_targets) == 1 else "hosts"
+        status(f"Validating SMB on {len(live_targets)} live {host_word}...", "info")
+
+        def smb_progress(done: int, total: int, host: str) -> None:
+            if done % 10 == 0 or done == total:
+                status(f"SMB validation: {done}/{total} complete", "info")
+
+        # Use 10s timeout for SMB banner validation (faster than full command timeout)
+        smb_validation_cache = parallel_smb_validation(
+            live_targets,
+            timeout=10,
+            progress_callback=smb_progress,
+        )
+
+        # Filter to only reachable hosts (passed SMB validation)
+        targets = [
+            t for t in live_targets if smb_validation_cache.get(t, (False, {}))[0]
+        ]
+
+        smb_filtered = len(live_targets) - len(targets)
+        if smb_filtered:
+            status(f"Filtered {smb_filtered} hosts (SMB not responding)", "info")
+
+        if not targets:
+            if args.discover_only:
+                # For discover-only, show SMB validation results even if no hosts passed
+                discovery_elapsed = time.time() - start_time
+                print_discovery_results(
+                    smb_validation_cache,
+                    original_target_count,
+                    port_open_count,
+                    discovery_elapsed,
+                    verbose=True,
+                )
+                return 0
+            status("No hosts passed SMB validation - nothing to enumerate", "error")
+            return 1
+
+        # Show discovered hosts with hostnames (helpful before hosts check)
+        output("")
+        status("Discovered SMB hosts:", "success")
+        for target_ip in sorted(targets):
+            _, smb_info = smb_validation_cache.get(target_ip, (False, {}))
+            hostname = smb_info.get("hostname", "")
+            fqdn = smb_info.get("fqdn", "")
+            domain = smb_info.get("dns_domain", "")
+            # Build display string: IP (FQDN) or IP (hostname) or just IP
+            if fqdn:
+                display = f"{target_ip} ({fqdn})"
+            elif hostname:
+                display = f"{target_ip} ({hostname})"
+            else:
+                display = target_ip
+            # Add domain info if available and different from hostname
+            if domain and domain.lower() not in display.lower():
+                display += f" [{domain}]"
+            output(f"  {display}")
+        output("")
+
+        status(f"Proceeding with {len(targets)} reachable targets", "success")
+        output("")
+
+        # Update multi_target_mode based on filtered results
+        multi_target_mode = len(targets) > 1
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DISCOVER-ONLY MODE: Early exit after host discovery
+    # ─────────────────────────────────────────────────────────────────────────
+    if args.discover_only:
+        discovery_elapsed = time.time() - start_time
+
+        # Print discovery results (pre-scan always runs in discover-only mode)
+        print_discovery_results(
+            smb_validation_cache,
+            total_scanned=original_target_count,
+            port_open_count=port_open_count,
+            elapsed=discovery_elapsed,
+            verbose=True,  # Always show detailed output in discover mode
+        )
+
+        # JSON output for discovery mode
+        if args.json_output:
+            discovery_json = get_discovery_json(
+                smb_validation_cache,
+                total_scanned=original_target_count,
+                port_open_count=port_open_count,
+                elapsed=discovery_elapsed,
+            )
+            JSON_DATA.update(discovery_json)
+
+        # Write output to file if specified
+        if args.output:
+            fd = None
+            try:
+                fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    fd = None
+                    if args.json_output:
+                        json.dump(JSON_DATA, f, indent=2)
+                    else:
+                        for line in OUTPUT_BUFFER:
+                            clean_line = RE_ANSI_ESCAPE.sub("", line)
+                            f.write(clean_line + "\n")
+                status(f"Output written to: {args.output} (permissions: 600)", "success")
+            except (IOError, OSError) as e:
+                status(f"Failed to write output file: {e}", "error")
+                if fd is not None:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
+
+        return 0
+
     # Parse credentials once (shared across all targets)
     creds = parse_credentials(args)
 
     # Initialize multi-target results collector
     multi_target_results = MultiTargetResults() if multi_target_mode else None
 
-    # Process each target
-    for idx, target in enumerate(targets, 1):
-        if multi_target_mode:
-            print_target_header(target, idx, len(targets))
+    # ─────────────────────────────────────────────────────────────────────────
+    # PARALLEL TARGET ENUMERATION (for multi-target efficiency)
+    # ─────────────────────────────────────────────────────────────────────────
+    if multi_target_mode and len(targets) > 1:
+        # Enable target-level parallel mode for buffered output
+        set_target_parallel_mode(True)
+        _print_lock = get_target_print_lock()
+        completed_count = 0
+        interrupted = False
+
+        # Use reduced workers in proxy mode
+        mt_workers = (
+            PROXY_MULTI_TARGET_WORKERS if is_proxy_mode() else MULTI_TARGET_WORKERS
+        )
+
+        status(
+            f"Running parallel enumeration on {len(targets)} targets "
+            f"({mt_workers} workers)...",
+            "info",
+        )
+        output("")
 
         try:
-            result = _run_single_target(args, target, creds)
+            with ThreadPoolExecutor(max_workers=mt_workers) as executor:
+                # Submit all targets
+                future_to_target = {}
+                for idx, target in enumerate(targets, 1):
+                    future = executor.submit(
+                        _run_target_parallel,
+                        args,
+                        target,
+                        creds,
+                        smb_validation_cache,
+                        idx,
+                        len(targets),
+                    )
+                    future_to_target[future] = (target, idx)
 
-            if multi_target_mode:
-                multi_target_results.add_result(target, result)
-                print_target_footer(target, result.status, result.elapsed_time)
+                # Process results as they complete
+                for future in as_completed(future_to_target):
+                    target, idx = future_to_target[future]
+                    try:
+                        result, output_buffer = future.result()
+
+                        # Print buffered output atomically
+                        with _print_lock:
+                            for line in output_buffer:
+                                output_direct(line)
+
+                        multi_target_results.add_result(target, result)
+                        completed_count += 1
+
+                    except Exception as e:
+                        error_msg = str(e) if str(e) else type(e).__name__
+                        # Print error atomically
+                        with _print_lock:
+                            status(f"Error scanning {target}: {error_msg}", "error")
+                        multi_target_results.add_result(
+                            target,
+                            TargetResult(target=target, status="failed", error=error_msg),
+                        )
+                        completed_count += 1
+
         except KeyboardInterrupt:
             output("")
-            status("Scan interrupted by user", "warning")
-            if multi_target_mode and multi_target_results:
-                # Mark current target as failed
-                multi_target_results.add_result(
-                    target,
-                    TargetResult(target=target, status="failed", error="Interrupted"),
-                )
-            break
-        except Exception as e:
-            error_msg = str(e) if str(e) else type(e).__name__
-            status(f"Error scanning {target}: {error_msg}", "error")
+            status("Scan interrupted by user - waiting for running tasks...", "warning")
+            interrupted = True
+            # Remaining targets will be marked as failed by the executor shutdown
+
+        finally:
+            set_target_parallel_mode(False)
+
+        if interrupted:
+            # Mark any unprocessed targets as interrupted
+            for future, (target, idx) in future_to_target.items():
+                if not future.done():
+                    multi_target_results.add_result(
+                        target,
+                        TargetResult(target=target, status="failed", error="Interrupted"),
+                    )
+
+    else:
+        # Single target mode - run sequentially (no parallel overhead)
+        for idx, target in enumerate(targets, 1):
             if multi_target_mode:
-                multi_target_results.add_result(
-                    target,
-                    TargetResult(target=target, status="failed", error=error_msg),
+                print_target_header(target, idx, len(targets))
+
+            try:
+                result = _run_single_target(
+                    args, target, creds, smb_cache=smb_validation_cache
                 )
-                print_target_footer(target, "failed", 0)
+
+                if multi_target_mode:
+                    multi_target_results.add_result(target, result)
+                    print_target_footer(target, result.status, result.elapsed_time)
+            except KeyboardInterrupt:
+                output("")
+                status("Scan interrupted by user", "warning")
+                if multi_target_mode and multi_target_results:
+                    multi_target_results.add_result(
+                        target,
+                        TargetResult(target=target, status="failed", error="Interrupted"),
+                    )
+                break
+            except Exception as e:
+                error_msg = str(e) if str(e) else type(e).__name__
+                status(f"Error scanning {target}: {error_msg}", "error")
+                if multi_target_mode:
+                    multi_target_results.add_result(
+                        target,
+                        TargetResult(target=target, status="failed", error=error_msg),
+                    )
+                    print_target_footer(target, "failed", 0)
 
     # Multi-target summary
     if multi_target_mode and multi_target_results:
@@ -607,6 +1024,41 @@ def main():
 
     # Write output to file if specified
     if args.output:
+        # Auto per-target output: If multiple targets, write separate files for each
+        if multi_target_mode and multi_target_results and len(live_targets) > 1:
+            # Write per-target output files
+            per_target_files = []
+            for target, result in multi_target_results.results.items():
+                if result.status == "success" and result.json_data:
+                    target_file = get_per_target_filename(args.output, target)
+                    fd = None
+                    try:
+                        fd = os.open(target_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                        with os.fdopen(fd, "w") as f:
+                            fd = None
+                            if args.json_output:
+                                json.dump(result.json_data, f, indent=2)
+                            elif result.output_lines:
+                                for line in result.output_lines:
+                                    clean_line = RE_ANSI_ESCAPE.sub("", line)
+                                    f.write(clean_line + "\n")
+                        per_target_files.append(target_file)
+                    except (IOError, OSError) as e:
+                        status(f"Failed to write per-target file for {target}: {e}", "error")
+                        if fd is not None:
+                            try:
+                                os.close(fd)
+                            except OSError:
+                                pass
+
+            if per_target_files:
+                status(f"Per-target output written to {len(per_target_files)} file(s)", "success")
+                for tf in per_target_files[:3]:  # Show first 3 filenames
+                    output(f"  - {tf}")
+                if len(per_target_files) > 3:
+                    output(f"  ... and {len(per_target_files) - 3} more")
+
+        # Write combined summary file
         fd = None
         try:
             fd = os.open(args.output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -618,7 +1070,7 @@ def main():
                     for line in OUTPUT_BUFFER:
                         clean_line = RE_ANSI_ESCAPE.sub("", line)
                         f.write(clean_line + "\n")
-            status(f"Output written to: {args.output} (permissions: 600)", "success")
+            status(f"Summary output written to: {args.output} (permissions: 600)", "success")
         except (IOError, OSError) as e:
             status(f"Failed to write output file: {e}", "error")
             if fd is not None:

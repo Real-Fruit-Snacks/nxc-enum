@@ -30,22 +30,36 @@ EOL_OS_PATTERNS = [
 RE_EOL_OS = [re.compile(p, re.IGNORECASE) for p in EOL_OS_PATTERNS]
 
 
-def is_outdated_os(os_string: str) -> bool:
+def _normalize_os_string(os_value) -> str:
+    """Normalize OS value that may be a string or list from LDAP.
+
+    LDAP multi-valued attributes can return as lists instead of strings.
+    This helper ensures we always work with a string.
+    """
+    if isinstance(os_value, list):
+        return os_value[0] if os_value else ""
+    return os_value if os_value else ""
+
+
+def is_outdated_os(os_string) -> bool:
     """Check if OS string matches an outdated/unsupported OS."""
+    os_string = _normalize_os_string(os_string)
     if not os_string:
         return False
     return any(pattern.search(os_string) for pattern in RE_OUTDATED_OS)
 
 
-def is_eol_os(os_string: str) -> bool:
+def is_eol_os(os_string) -> bool:
     """Check if OS string matches an end-of-life (but not ancient) OS."""
+    os_string = _normalize_os_string(os_string)
     if not os_string:
         return False
     return any(pattern.search(os_string) for pattern in RE_EOL_OS)
 
 
-def categorize_os(os_string: str) -> str:
+def categorize_os(os_string) -> str:
     """Categorize OS into simplified groups for summary."""
+    os_string = _normalize_os_string(os_string)
     if not os_string:
         return "Unknown"
 
@@ -93,70 +107,99 @@ def categorize_os(os_string: str) -> str:
 
 def enum_computers(args, cache):
     """Enumerate domain computers."""
-    print_section("Domain Computers", args.target)
+    target = cache.target if cache else args.target
+    print_section("Domain Computers", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping computer enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Querying domain computers...")
 
-    # Run nxc ldap --computers
-    comp_args = ["ldap", args.target] + auth + ["--computers"]
-    rc, stdout, stderr = run_nxc(comp_args, args.timeout)
-    debug_nxc(comp_args, stdout, stderr, "Computers Query")
+    # Try to use batch data first (populated during cache priming)
+    batch_data = cache.get_computers_from_batch()
+    if batch_data is not None:
+        # Use pre-fetched batch data - much faster
+        computers = []
+        outdated_computers = []
+        eol_computers = []
+        for comp in batch_data:
+            os_info = comp.get("os", "")
+            computer = {
+                "name": comp["name"],
+                "os": os_info,
+                "os_category": categorize_os(os_info),
+                "outdated": is_outdated_os(os_info),
+                "eol": is_eol_os(os_info),
+            }
+            computers.append(computer)
+            if computer["outdated"]:
+                outdated_computers.append(computer)
+            elif computer["eol"]:
+                eol_computers.append(computer)
+        rc, stdout, stderr = 0, "", ""  # No individual query needed
+    else:
+        # Fall back to individual query
+        # Run nxc ldap --computers
+        comp_args = ["ldap", target] + auth + ["--computers"]
+        rc, stdout, stderr = run_nxc(comp_args, args.timeout)
+        debug_nxc(comp_args, stdout, stderr, "Computers Query")
 
-    computers = []
-    outdated_computers = []
-    eol_computers = []
+        computers = []
+        outdated_computers = []
+        eol_computers = []
 
-    for line in stdout.split("\n"):
-        line = line.strip()
-        if not line:
-            continue
+        for line in stdout.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
 
-        # Skip noise lines
-        if "[*]" in line or "[+]" in line or "[-]" in line:
-            continue
-        if not line.startswith("LDAP"):
-            continue
+            # Skip noise lines
+            if "[*]" in line or "[+]" in line or "[-]" in line:
+                continue
+            if not line.startswith("LDAP"):
+                continue
 
-        # Parse computer entry
-        parts = line.split()
-        if len(parts) < 5:
-            continue
+            # Parse computer entry
+            parts = line.split()
+            if len(parts) < 5:
+                continue
 
-        # Skip header-like lines
-        if parts[4].lower() in ("computername", "name", "----"):
-            continue
+            # Skip header-like lines
+            if parts[4].lower() in ("computername", "name", "----"):
+                continue
 
-        # Extract computer name (may end with $)
-        comp_name = parts[4].rstrip("$")
+            # Extract computer name (may end with $)
+            comp_name = parts[4].rstrip("$")
 
-        # Rest is OS info (if present)
-        os_info = " ".join(parts[5:]) if len(parts) > 5 else ""
+            # Rest is OS info (if present)
+            os_info = " ".join(parts[5:]) if len(parts) > 5 else ""
 
-        # Clean up OS info
-        os_info = os_info.strip()
+            # Clean up OS info
+            os_info = os_info.strip()
 
-        # If no OS info from LDAP, try to use cached SMB banner info
-        # This works for the connected DC whose banner we captured
-        cached_os_info = getattr(cache, "os_info", None)
-        if not os_info and cached_os_info:
-            cached_hostname = cached_os_info.get("hostname", "").upper()
-            if cached_hostname and comp_name.upper() == cached_hostname:
-                os_info = cached_os_info.get("os", "")
+            # If no OS info from LDAP, try to use cached SMB banner info
+            cached_os_info = getattr(cache, "os_info", None)
+            if not os_info and cached_os_info:
+                cached_hostname = cached_os_info.get("hostname", "").upper()
+                if cached_hostname and comp_name.upper() == cached_hostname:
+                    os_info = cached_os_info.get("os", "")
 
-        computer = {
-            "name": comp_name,
-            "os": os_info,
-            "os_category": categorize_os(os_info),
-            "outdated": is_outdated_os(os_info),
-            "eol": is_eol_os(os_info),
-        }
-        computers.append(computer)
+            computer = {
+                "name": comp_name,
+                "os": os_info,
+                "os_category": categorize_os(os_info),
+                "outdated": is_outdated_os(os_info),
+                "eol": is_eol_os(os_info),
+            }
+            computers.append(computer)
 
-        if computer["outdated"]:
-            outdated_computers.append(computer)
-        elif computer["eol"]:
-            eol_computers.append(computer)
+            if computer["outdated"]:
+                outdated_computers.append(computer)
+            elif computer["eol"]:
+                eol_computers.append(computer)
 
     # Store in cache
     cache.computers = computers
@@ -208,7 +251,7 @@ def enum_computers(args, cache):
                 comp_list += f" (+{len(outdated_computers) - 3} more)"
             cache.add_next_step(
                 finding=f"Outdated OS: {comp_list}",
-                command=f"nxc smb {args.target} -u <user> -p <pass> --gen-relay-list outdated.txt",
+                command=f"nxc smb {target} -u <user> -p <pass> --gen-relay-list outdated.txt",
                 description="Generate relay target list - outdated systems may be vulnerable",
                 priority="medium",
             )
@@ -225,8 +268,15 @@ def enum_computers(args, cache):
                 output(f"    ... and {len(eol_computers) - 5} more")
 
         # Separate servers and workstations for detailed view
-        servers = [c for c in computers if "server" in c["os_category"].lower()]
-        workstations = [c for c in computers if "server" not in c["os_category"].lower()]
+        # Ensure os_category is string before calling .lower() (defensive check)
+        def get_os_category(comp):
+            cat = comp.get("os_category", "")
+            if isinstance(cat, list):
+                cat = cat[0] if cat else ""
+            return str(cat).lower() if cat else ""
+
+        servers = [c for c in computers if "server" in get_os_category(c)]
+        workstations = [c for c in computers if "server" not in get_os_category(c)]
 
         # Show server list (usually fewer, more important)
         if servers and len(servers) <= 20:
@@ -236,7 +286,12 @@ def enum_computers(args, cache):
             output(f"{'-'*25} {'-'*40}")
             for comp in sorted(servers, key=lambda x: x["name"].lower()):
                 name = comp["name"][:25]
-                os_str = comp["os"][:40] if comp["os"] else "(unknown)"
+                os_raw = comp["os"] or "(unknown)"
+                # Truncate with "..." if too long, ensuring we don't leave unclosed parens
+                if len(os_raw) > 40:
+                    os_str = os_raw[:37] + "..."
+                else:
+                    os_str = os_raw
                 if comp["outdated"]:
                     output(f"{c(name, Colors.RED):<35} {c(os_str, Colors.RED)}")
                 elif comp["eol"]:
@@ -257,7 +312,7 @@ def enum_computers(args, cache):
         elif "STATUS_LOGON_FAILURE" in combined.upper():
             status("Authentication failed - cannot enumerate computers", "error")
         else:
-            status("No computers found or unable to enumerate", "warning")
+            status("No computers found or unable to enumerate", "info")
 
     if args.json_output:
         JSON_DATA["computers"] = computers

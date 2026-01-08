@@ -13,6 +13,11 @@ def is_nxc_noise_line(line: str) -> bool:
     """Check if line is nxc connection/credential noise to filter out."""
     if not line.strip():
         return True
+    # IMPORTANT: Lines with status indicators are NEVER noise - they contain protocol results
+    # This prevents filtering out successful auth lines like:
+    # "MSSQL 10.10.205.148 1433 MS02 [+] oscp.exam\Eric.Wallows:EricLikesRunning800"
+    if "[+]" in line or "[-]" in line or "[*]" in line or "[!]" in line:
+        return False
     # Skip credential confirmation lines (e.g., "hacksmarter.local\\faraday:hacksmarter123")
     if "\\" in line and ":" in line and "@" not in line:
         parts = line.split()
@@ -35,6 +40,47 @@ def is_nxc_noise_line(line: str) -> bool:
     # Skip connection metadata fragments (e.g., "link-local ipv6=False")
     # These can appear as standalone lines when verbose output is split
     if "link-local" in line.lower():
+        return True
+    # Skip Python tracebacks from NetExec (upstream bugs)
+    # These clutter the output and are not actionable by the user
+    if "Traceback (most recent call last)" in line:
+        return True
+    if line.strip().startswith("File ") and ", line " in line and " in " in line:
+        return True
+    # Skip common Python exception lines
+    if any(
+        exc in line
+        for exc in (
+            "PyAsn1UnicodeDecodeError",
+            "AttributeError:",
+            "KeyError:",
+            "TypeError:",
+            "ValueError:",
+            "IndexError:",
+            "impacket.",
+            "ldap3.",
+        )
+    ):
+        return True
+    # Skip Rich-formatted traceback lines (box-drawing characters)
+    # These appear in nxc verbose output for exceptions
+    if any(
+        char in line
+        for char in (
+            "╭─",  # Top border of Rich traceback box
+            "│ ",  # Side border of Rich traceback box
+            "╰─",  # Bottom border of Rich traceback box
+            "❱",   # Rich error marker pointing to the error line
+        )
+    ):
+        return True
+    # Skip ERROR prefix lines from nxc (exception messages)
+    if line.strip().startswith("ERROR ") or " ERROR " in line:
+        return True
+    # Skip nxc exception wrapper messages
+    if "Exception while calling proto_flow()" in line:
+        return True
+    if "Exception while calling" in line:
         return True
     return False
 

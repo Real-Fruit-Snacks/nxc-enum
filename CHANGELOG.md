@@ -5,6 +5,230 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+## [1.7.0] - 2025-01-07
+
+### Added
+- **Proxy Mode** (`--proxy-mode`) - Optimize for proxychains/SOCKS operation
+  - Reduces parallel workers (15 → 2, 100 → 5) to prevent proxy overload
+  - Increases timeouts (30s → 120s) for proxy latency
+  - Skips incompatible modules (iOXID, VNC) that use raw sockets
+  - Skips hostname validation (DNS bypasses proxy)
+  - Auto-detects proxychains via LD_PRELOAD environment variable
+  - Example: `proxychains nxc-enum 10.0.0.1 -u user -p pass`
+- **Validate-Only Mode** (`--validate-only`) - Fast credential testing without enumeration
+  - Validates credentials and shows results immediately
+  - Detects local admin status (Pwn3d!)
+  - Supports single and multi-credential modes
+  - Much faster than full enumeration for credential spraying workflows
+  - Example: `nxc-enum 10.0.0.1 -C creds.txt --validate-only`
+- **Spider Module Options** - New CLI options for share spidering control
+  - `--spider` - Spider shares for files (metadata only by default)
+  - `--spider-download` - Enable file download during spidering (use with caution)
+  - `--spider-max-size` - Max file size to download in bytes (default: 10MB)
+  - `--spider-output` - Output directory for downloaded files
+- **LAPS Computer Filter** (`--laps-computer`) - Filter LAPS check to specific computers
+  - Supports wildcard patterns (e.g., `--laps-computer 'SRV*'`)
+  - Useful for large domains to target specific server groups
+- **ADCS Server Options** - Enhanced ADCS enumeration control
+  - `--adcs-server` - Target specific ADCS server (e.g., 'ca01.corp.local')
+  - `--adcs-base-dn` - Custom base DN for ADCS search
+- **FTP Credential Testing** - FTP module now tests with provided credentials
+  - First tries anonymous access (as before)
+  - If anonymous fails AND credentials provided, tests with SMB credentials
+  - Reports success/failure for both anonymous and authenticated access
+  - Lists files on successful authenticated login
+  - No longer just suggests testing credentials as a "next step"
+- **9 New Enumeration Modules** - Expanded coverage for penetration testing
+  - **gMSA Enumeration** (`gmsa.py`) - Enumerates Group Managed Service Accounts and checks
+    if passwords are readable (high-value credential target)
+  - **GPP Password Extraction** (`gpp_password.py`) - Reads SYSVOL for Group Policy Preferences
+    cpassword values (MS14-025), decrypts locally with known AES key
+  - **Network Interfaces** (`interfaces.py`) - Enumerates interfaces via SMB IOCTL, identifies
+    multi-homed hosts for pivoting opportunities
+  - **Disk Enumeration** (`disks.py`) - Lists disk drives via SRVSVC RPC for storage mapping
+  - **Share File Spider** (`spider.py`) - Recursively lists files on shares using spider_plus,
+    highlights interesting files (configs, scripts, backups, keys)
+  - **SCCM/MECM Discovery** (`sccm.py`) - Discovers SCCM infrastructure from AD, identifies
+    site servers, management points, distribution points
+  - **VNC Detection** (`vnc.py`) - Scans for VNC services on ports 5900-5903/5800-5801,
+    detects unauthenticated access configurations
+  - **Fine-Grained Password Policies** (`pso.py`) - Enumerates PSO objects that override
+    default password policy, identifies weak policies affecting specific groups
+  - **iOXIDResolver** (`ioxid.py`) - Discovers network interfaces via DCOM port 135,
+    works without authentication, finds multi-homed hosts for pivoting
+- **Discover-Only Mode** (`--discover-only`) - Quick reconnaissance without enumeration
+  - Only discovers live SMB hosts, skips all enumeration modules
+  - No credentials required - purely network reconnaissance
+  - Shows IP, hostname, domain, signing status, and SMBv1 for each host
+  - Supports JSON output (`-j -o hosts.json`) for integration with other tools
+  - Ideal for initial network mapping before targeted enumeration
+  - Example: `nxc-enum 10.0.0.0/24 --discover-only`
+- **Parallel Host Pre-scanning** - Dramatically faster multi-target scanning
+  - Phase 1: Parallel TCP port 445 scan (100 workers, 0.5s timeout) filters unreachable hosts
+  - Phase 2: Parallel SMB validation (20 workers) extracts hostname/domain for live hosts
+  - Auto-enabled when targets > 5, use `--no-prescan` to disable
+  - /24 network scan (256 hosts): ~42 minutes → ~15 seconds for host discovery
+  - Pre-computed SMB info cached and reused during enumeration (no double validation)
+- **Discovered Hosts Display** - Shows discovered hosts with hostnames before enumeration
+  - Displays `[+] Discovered SMB hosts:` with IP and hostname for each live target
+  - Helpful for visibility into which hosts will be enumerated
+  - Shows hostname/FQDN extracted during SMB validation phase
+
+### Changed
+- **TARGET STATUS Display** - Multi-target summary now shows hostname next to each IP
+  - Example: `[+] 10.10.205.146 (DC01) - Completed (121.4s)`
+  - Hostname extracted from cache.domain_info when available
+- **GPP Password Module Messaging** - Improved output clarity
+  - Now lists which GPP XML files were searched (Groups.xml, Services.xml, etc.)
+  - Clearer distinction between "not found" and "patched/never used"
+  - Suggests Domain User rights when SYSVOL access denied
+
+### Fixed
+- **DEBUG Output Noise Filtering** - Fixed upstream nxc tracebacks leaking into DEBUG output
+  - Added `_is_debug_noise_line()` filter function to `output.py`
+  - Enhanced `is_nxc_noise_line()` in `nxc_output.py` to detect Rich-formatted tracebacks
+  - Filters Python tracebacks, Rich box-drawing characters, ERROR lines, exception messages
+  - Preserves useful INFO lines while removing upstream nxc bug noise
+- **AD Subnets Alternative Command** - Added ldapsearch fallback when get-network module fails
+  - Detects module exceptions (PyAsn1UnicodeDecodeError, etc.) and shows helpful message
+  - Provides ready-to-run ldapsearch command with correct base DN for subnet enumeration
+  - Dynamically constructs DN from domain info: `CN=Subnets,CN=Sites,CN=Configuration,DC=...`
+- **RID Brute Parsing** - Fixed regex to handle output without DOMAIN\ prefix
+  - Pattern `(\d+):\s*(?:\S+\\)?(\S+)\s+\(SidTypeUser\)` now makes DOMAIN\ optional
+  - Fixes silent parsing failure when nxc outputs RID users without domain prefix
+- **MSSQL Detection False Negative** - Fixed noise filter incorrectly discarding status lines
+  - `is_nxc_noise_line()` now preserves lines with `[+]`, `[-]`, `[*]`, `[!]` indicators
+  - Fixes bug where successful MSSQL auth was reported as "service not detected"
+- **Computers Module List Attribute Crash** - Fixed `.lower()` called on list attributes
+  - `categorize_os()` now handles LDAP multi-valued attributes safely
+  - Added defensive `get_os_category()` helper for server/workstation classification
+  - Fixes `'list' object has no attribute 'lower'` error in Computers module
+- **LDAP Anonymous Probe "(good)" Message** - Fixed misleading success message
+  - Added `ldap_unavailable` flag to distinguish connection failure from access denied
+  - Added "failed to create connection object" to failure indicator list
+  - Now shows "No anonymous access available (LDAP service unavailable)" for non-DCs
+  - Only shows "(good)" when LDAP service was accessible but explicitly rejected
+- **Early LDAP Module Filtering** - Skip LDAP modules before thread pool submission
+  - 16 LDAP-dependent modules now filtered upfront when `cache.ldap_available=False`
+  - Single summary message "LDAP unavailable - skipping N LDAP-dependent modules"
+  - Reduces thread pool overhead and eliminates redundant individual skip messages
+
+### Performance
+- **LDAP Availability Early-Return** - Skip LDAP modules instantly on member servers
+  - 15 LDAP-dependent modules now check `cache.ldap_available` before execution
+  - Member servers (LDAP ports closed) skip all LDAP modules in <1ms each
+  - Previously: Each module attempted LDAP connection, timed out after 15-30s
+  - Affected modules: admin_count, delegation, adcs, dc_list, maq, subnets, pso, pre2k,
+    pwd_not_required, descriptions, kerberoastable, asreproast, computers, laps, gmsa
+  - Impact: ~45-60s saved on member server scans (15 modules × 3s avg timeout)
+- **Parallel Multi-Target Enumeration** - Targets now enumerated in parallel (~5x faster)
+  - Multi-target mode (>1 target) uses ThreadPoolExecutor with 5 concurrent workers
+  - Atomic output buffering prevents output interleaving between targets
+  - Single-target mode unchanged (no parallel overhead)
+  - 10 targets × 30s each: 5 minutes → ~1 minute
+- **Expanded Parallel Module Execution** - 29 modules run in parallel (up from 7)
+  - Added 22 independent modules to parallel execution: delegation, pwd_not_required,
+    maq, pre2k, dns, webdav, laps, ldap_signing, local_groups, mssql, rdp, ftp, nfs,
+    gmsa, pso, sccm, gpp_password, interfaces, disks, vnc, ioxid
+  - Worker pool increased from 7 to 15 workers
+  - ~50-70% faster single-target enumeration
+- **Expanded Cache Priming** - 5 queries primed in parallel (up from 3)
+  - Added password policy and LDAP users queries to cache priming
+  - Worker pool increased from 3 to 5 workers
+  - Reduces redundant network calls during enumeration
+- **Tiered Timeout Constants** - Operation-specific timeout configuration
+  - Port scan: 0.5s (fast TCP connect)
+  - SMB validation: 5s
+  - LDAP query: 15s
+  - Module default: 30s
+  - Heavy modules: 120s
+- **LDAP Availability Detection** - Fixed `cache.ldap_available` not detecting LDAP failures
+  - Bug: Check only examined stderr, but LDAP failure messages appear in stdout
+  - Symptom: LDAP modules ran on member servers despite ports being closed
+  - Fix: Now checks both stdout and stderr for failure indicators
+  - Indicators: "failed to create connection", "failed to connect", "connection refused",
+    "ldap ping failed", "error"
+- **Password Placeholder in smbclient Commands** - Fixed `<password>` not being substituted
+  - Added regex pattern to handle smbclient credential format (`-U 'user%<password>'`)
+  - Previously: `smbclient //host/share -U 'user%<password>'` (placeholder not replaced)
+  - Now: `smbclient //host/share -U 'user%ActualPassword'` (correctly substituted)
+- **Special Characters in Passwords** - Fixed shell escaping for passwords with special chars
+  - Passwords containing backslashes and single quotes now properly escaped
+  - Prevents command injection and shell parsing errors in Next Steps commands
+- **Missing Multi-Target Copy-Paste Categories** - Added 11 missing categories to aggregated output
+  - Added: targets, gmsa_accounts, gpp_passwords, interface_ips, disk_drives,
+    interesting_files, sccm_servers, vnc_ports, weak_pso_groups, ioxid_addresses, pivot_ips
+  - Multi-target aggregated copy-paste now matches single-target output categories
+- **Impacket Credential Placeholders** - Fixed `:<pass>` not being substituted in quoted strings
+  - Commands like `getST.py 'domain/user:<pass>'` now properly substitute the password
+  - Previously: `'domain/user:<pass>'` (placeholder not replaced inside quotes)
+  - Now: `'domain/user:ActualPassword'` (correctly substituted)
+- **User@Domain Placeholder Format** - Fixed `-u <user>@<domain>` not being substituted
+  - Commands with both `<user>` and `<domain>` placeholders now correctly substitute both
+  - Previously: `-u <user>@<domain>` remained as placeholders
+  - Now: `-u 'actualuser@actualdomain.local'` (both replaced and properly quoted)
+- **CRITICAL: Multi-target CIDR bug** - Fixed all 34 enumeration modules passing CIDR notation to nxc
+  - Previously: `nxc smb 10.0.0.0/24 --shares` (scanned entire /24 for every command!)
+  - Now: `nxc smb 10.0.0.1 --shares` (correctly uses individual resolved target)
+  - Root cause: modules used `args.target` (user input) instead of `cache.target` (resolved IP)
+  - Impact: Prevented massive performance degradation and hundreds of connection errors
+- **DNS enumeration attribute error** - Fixed `'EnumCache' object has no attribute 'listener_results'`
+  - Added `cache.listener_results` storage after listener scan
+  - Made dns.py gracefully handle missing attribute when running specific modules
+
+### Changed
+- **MSSQL Module - Detection Only** - Rewritten for passive enumeration philosophy
+  - Now only tests MSSQL connectivity and authentication
+  - NO SQL queries executed on the target (removed `-q` queries)
+  - Detects hostname, authentication status, and sysadmin privileges
+  - Provides ready-to-run commands as recommendations:
+    - Database enumeration (`SELECT name FROM master.dbo.sysdatabases`)
+    - Linked servers (`SELECT name FROM sys.servers WHERE is_linked=1`)
+    - Privilege check (`-M mssql_priv`)
+    - Login enumeration (`-M enum_logins`)
+  - User decides when to run queries manually
+- **DNS Module - Recommendation Only** - Rewritten for passive enumeration philosophy
+  - NO WMI queries executed on the target (nxc `enum_dns` uses WMI)
+  - Checks if LDAP/DNS ports are available for enumeration
+  - Recommends LDAP-based tools instead:
+    - `adidnsdump` for AD-integrated DNS zone dumps
+    - `dnstool.py` for specific record queries
+    - `dig`/`dnsrecon` for standard DNS enumeration
+  - Provides nxc `enum_dns` as alternative (notes it uses WMI)
+- **Admin Privilege Checks** - Modules now properly skip when admin not detected
+  - `disks.py` - Added `is_admin` parameter, skips gracefully if not admin
+  - `local_groups.py` - Added `is_admin` parameter, skips gracefully if not admin
+  - `parallel.py` - Updated to pass `needs_admin=True` for disks and local_groups
+- **Module Exports Completed** - Added 9 missing exports to `__init__.py`
+  - Added: `enum_gmsa`, `enum_gpp_password`, `enum_pso`, `enum_sccm`
+  - Added: `enum_disks`, `enum_interfaces`, `enum_ioxid`, `enum_spider`, `enum_vnc`
+  - All new modules now properly importable from `nxc_enum.enums`
+- **SMB-based Host Validation** - Replaced ICMP ping with SMB-based reachability check
+  - More reliable: ICMP ping is commonly blocked by firewalls, SMB ports rarely are
+  - Confirms target is a Windows machine with SMB services running
+  - Extracts hostname/domain during validation (eliminates redundant SMB call)
+  - Single SMB connection now performs both reachability check and hosts resolution data extraction
+
+### Documentation
+- **Passive Enumeration Philosophy** - Added new section to README explaining design principles
+  - Documents allowed operations (LDAP reads, SMB enumeration, RPC queries)
+  - Documents prohibited operations (SQL queries, WMI, Kerberos tickets, command execution)
+  - Explains recommendation pattern for MSSQL, DNS, Kerberoast, shares
+- **Updated Command Reference** - Added new CLI options to documentation
+  - Spider options (`--spider`, `--spider-download`, `--spider-max-size`, `--spider-output`)
+  - LAPS filter (`--laps-computer`)
+  - ADCS options (`--adcs-server`, `--adcs-base-dn`)
+- **Updated Module Descriptions** - Clarified passive nature of MSSQL and DNS modules
+  - MSSQL: "MSSQL detection and auth test (recommends queries)"
+  - DNS: "DNS enumeration recommendations (passive)"
+
+### Removed
+- **ICMP Ping Check** - Removed `ping_host()` function in favor of SMB validation
+  - Ping-based checks caused false negatives on hosts with ICMP blocked
+  - SMB validation is more appropriate for AD enumeration tool
+
 ## [1.6.0] - 2025-01-04
 
 ### Added
@@ -250,7 +474,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Colored terminal output
 - Pass-the-hash support
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.4.0...v1.5.0

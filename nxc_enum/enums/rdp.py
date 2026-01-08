@@ -21,13 +21,21 @@ def enum_rdp(args, cache):
 
     Uses nxc rdp module to probe RDP configuration.
     """
-    print_section("RDP Status Check", args.target)
+    target = cache.target if cache else args.target
+    print_section("RDP Status Check", target)
+
+    # Skip if port pre-scan determined RDP is unavailable
+    if cache.rdp_available is False:
+        status("RDP port (3389) not open - skipping", "info")
+        if args.json_output:
+            JSON_DATA["rdp"] = {"enabled": False, "nla_required": None}
+        return
 
     status("Checking RDP configuration...")
 
     # RDP check doesn't require authentication for basic status
     # Just probe the port to see if RDP is available and check NLA
-    rdp_args = ["rdp", args.target]
+    rdp_args = ["rdp", target]
     rc, stdout, stderr = run_nxc(rdp_args, args.timeout)
     debug_nxc(rdp_args, stdout, stderr, "RDP Check")
 
@@ -106,19 +114,19 @@ def enum_rdp(args, cache):
             )
         elif rdp_info["nla_required"] is False:
             output(
-                f"  {c('[!]', Colors.YELLOW)} NLA: {c('Not Required', Colors.YELLOW + Colors.BOLD)}"
+                f"  {c('[!]', Colors.RED)} NLA: {c('Not Required', Colors.RED + Colors.BOLD)}"
             )
             output(
                 c(
                     "      May be vulnerable to MITM and BlueKeep-style attacks",
-                    Colors.YELLOW,
+                    Colors.RED,
                 )
             )
 
             # Add next step for RDP without NLA
             cache.add_next_step(
                 finding="RDP without NLA requirement",
-                command=f"nxc rdp {args.target} -u '' -p '' --screenshot",
+                command=f"nxc rdp {target} -u '' -p '' --screenshot",
                 description="Attempt to capture RDP screenshot (may reveal logged-in user)",
                 priority="medium",
             )

@@ -16,6 +16,8 @@ class TargetResult:
         error: Error message if status is "failed"
         cache: EnumCache with findings (if successful)
         elapsed_time: Time taken to scan this target
+        json_data: Per-target JSON data snapshot (for per-target file output)
+        output_lines: Per-target output buffer snapshot (for per-target file output)
     """
 
     target: str
@@ -23,6 +25,8 @@ class TargetResult:
     error: Optional[str] = None
     cache: Optional[EnumCache] = None
     elapsed_time: float = 0.0
+    json_data: Optional[Dict[str, Any]] = None
+    output_lines: Optional[List[str]] = None
 
 
 @dataclass

@@ -16,6 +16,8 @@ from .descriptions import enum_descriptions
 from .dns import enum_dns
 from .domain_intel import enum_domain_intelligence
 from .ftp import enum_ftp
+from .gmsa import enum_gmsa
+from .gpp_password import enum_gpp_password
 from .groups import enum_groups, get_group_members
 from .kerberoastable import enum_kerberoastable
 from .laps import enum_laps
@@ -28,6 +30,8 @@ from .maq import enum_maq
 from .mssql import enum_mssql
 from .nfs import enum_nfs
 from .os_info import enum_os_info
+from .pso import enum_pso
+from .sccm import enum_sccm
 
 # Security enumeration
 from .policies import enum_policies
@@ -43,12 +47,17 @@ from .sessions import enum_sessions
 from .sessions_multi import enum_sessions_multi
 
 # Resource enumeration
+from .disks import enum_disks
+from .interfaces import enum_interfaces
+from .ioxid import enum_ioxid
 from .shares import enum_shares
 from .shares_multi import enum_shares_multi
 from .signing import enum_signing
 from .smb_info import enum_smb_info
+from .spider import enum_spider
 from .subnets import enum_subnets
 from .target_info import enum_target_info
+from .vnc import enum_vnc
 
 # User/Group enumeration
 from .users import enum_users
@@ -79,6 +88,10 @@ __all__ = [
     "enum_printers",
     "enum_printers_multi",
     "enum_subnets",
+    "enum_disks",
+    "enum_interfaces",
+    "enum_ioxid",
+    "enum_spider",
     # Session
     "enum_sessions",
     "enum_sessions_multi",
@@ -104,9 +117,14 @@ __all__ = [
     "enum_pwd_not_required",
     "enum_admin_count",
     "enum_dns",
+    "enum_gmsa",
+    "enum_gpp_password",
+    "enum_pso",
+    "enum_sccm",
     # Other protocols
     "enum_mssql",
     "enum_rdp",
     "enum_ftp",
     "enum_nfs",
+    "enum_vnc",
 ]

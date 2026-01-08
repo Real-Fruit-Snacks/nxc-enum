@@ -340,12 +340,18 @@ def _parse_verbose_dc_info(stdout: str) -> dict:
 
 def enum_dc_list(args, cache):
     """List domain controllers and trusts."""
-    print_section("Domain Controllers & Trusts", args.target)
+    target = cache.target if cache else args.target
+    print_section("Domain Controllers & Trusts", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping DC enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Querying domain controllers and trusts...")
 
-    dc_args = ["ldap", args.target] + auth + ["--dc-list"]
+    dc_args = ["ldap", target] + auth + ["--dc-list"]
     rc, stdout, stderr = run_nxc(dc_args, args.timeout)
     debug_nxc(dc_args, stdout, stderr, "DC List")
 
@@ -427,7 +433,7 @@ def enum_dc_list(args, cache):
     _print_forest_info(verbose_info)
 
     # Add next steps for interesting findings
-    _add_dc_next_steps(dcs, trusts, verbose_info, cache, args)
+    _add_dc_next_steps(dcs, trusts, verbose_info, cache, target)
 
     # Store for aggregated copy-paste section
     for dc in dcs:
@@ -549,7 +555,7 @@ def _print_forest_info(verbose_info: dict):
             output(f"  Forest Functional Level: {level}")
 
 
-def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, args):
+def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, target: str):
     """Add relevant next steps based on DC and trust findings."""
 
     # Check for FSMO role holders
@@ -563,7 +569,7 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, args)
     if fsmo_roles:
         cache.add_next_step(
             finding=f"FSMO roles identified: {', '.join(fsmo_roles[:2])}",
-            command=f"nxc ldap {args.target} -u <user> -p <pass> --get-sid",
+            command=f"nxc ldap {target} -u <user> -p <pass> --get-sid",
             description="Target FSMO role holders for high-value attacks",
             priority="low",
         )
@@ -608,7 +614,7 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, args)
     if len(dcs) >= 3:
         cache.add_next_step(
             finding=f"Large domain with {len(dcs)} DCs",
-            command=f"bloodhound-python -u <user> -p <pass> -d <domain> -dc {args.target} -c all",
+            command="rusthound-ce -d '<domain>' -u '<user>@<domain>' -p '<pass>' -z -c All",
             description="Collect BloodHound data for attack path analysis",
             priority="medium",
         )

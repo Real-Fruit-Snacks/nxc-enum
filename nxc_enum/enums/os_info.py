@@ -264,10 +264,11 @@ def infer_version_from_build(build: str) -> str:
 
 def enum_os_info(args, cache):
     """Get OS information."""
-    print_section("OS Information via RPC", args.target)
+    target = cache.target if cache else args.target
+    print_section("OS Information via RPC", target)
 
     auth = cache.auth_args
-    rc, stdout, stderr = cache.get_smb_basic(args.target, auth)
+    rc, stdout, stderr = cache.get_smb_basic(target, auth)
 
     if rc != 0 and not stdout:
         status("Could not get OS information", "error")
@@ -292,46 +293,46 @@ def enum_os_info(args, cache):
         version_inferred = infer_version_from_build(build)
         version = verbose_data.get("version_detailed") or version_inferred or "10.0"
 
-        output(f"OS: {os_info}")
+        output(f"  OS: {os_info}")
 
         # Display version with inference note if applicable
         if version_inferred and not verbose_data.get("version_detailed"):
-            output(f"OS version: '{version}' {c('(inferred from build)', Colors.CYAN)}")
+            output(f"  OS version: '{version}' {c('(inferred from build)', Colors.CYAN)}")
         else:
-            output(f"OS version: '{version}'")
+            output(f"  OS version: '{version}'")
 
         # Display architecture if detected
         if verbose_data.get("architecture"):
-            output(f"Architecture: {c(verbose_data['architecture'], Colors.CYAN)}")
+            output(f"  Architecture: {c(verbose_data['architecture'], Colors.CYAN)}")
 
         # Display edition if detected
         if verbose_data.get("edition"):
-            output(f"Edition: {verbose_data['edition']}")
+            output(f"  Edition: {verbose_data['edition']}")
 
         # Display build with revision if available
         if verbose_data.get("build_revision"):
-            output(f"OS build: '{build}.{verbose_data['build_revision']}'")
+            output(f"  OS build: '{build}.{verbose_data['build_revision']}'")
         else:
-            output(f"OS build: '{build}'")
+            output(f"  OS build: '{build}'")
 
         # Display service pack if detected
         if verbose_data.get("service_pack"):
-            output(f"Service Pack: {verbose_data['service_pack']}")
+            output(f"  Service Pack: {verbose_data['service_pack']}")
 
         # Display domain role if detected
         if verbose_data.get("domain_role"):
             role_color = Colors.RED if verbose_data.get("is_domain_controller") else Colors.CYAN
-            output(f"Domain Role: {c(verbose_data['domain_role'], role_color)}")
+            output(f"  Domain Role: {c(verbose_data['domain_role'], role_color)}")
 
         # Display Samba info for Linux hosts
         if verbose_data.get("samba_version"):
-            output(f"Samba Version: {verbose_data['samba_version']}")
+            output(f"  Samba Version: {verbose_data['samba_version']}")
         if verbose_data.get("kernel_version"):
-            output(f"Kernel Version: {verbose_data['kernel_version']}")
+            output(f"  Kernel Version: {verbose_data['kernel_version']}")
 
         # Display hotfixes if detected
         if verbose_data.get("hotfixes"):
-            output(f"Detected Hotfixes: {', '.join(sorted(verbose_data['hotfixes']))}")
+            output(f"  Detected Hotfixes: {', '.join(sorted(verbose_data['hotfixes']))}")
 
         # Display security notes
         security_notes = get_os_security_notes(os_info, build, verbose_data)
@@ -360,7 +361,7 @@ def enum_os_info(args, cache):
         if verbose_data.get("is_domain_controller"):
             cache.add_next_step(
                 finding="Domain Controller detected",
-                command=f"nxc ldap {args.target} -u USER -p PASS --trusted-for-delegation",
+                command=f"nxc ldap {target} -u USER -p PASS --trusted-for-delegation",
                 description="Enumerate delegation settings on the DC",
                 priority="high",
             )
@@ -372,7 +373,7 @@ def enum_os_info(args, cache):
         ):
             cache.add_next_step(
                 finding="Outdated/vulnerable OS detected",
-                command=f"nmap -sV --script vuln {args.target}",
+                command=f"nmap -sV --script vuln {target}",
                 description="Scan for known vulnerabilities on legacy OS",
                 priority="high",
             )

@@ -48,7 +48,18 @@ def print_multi_target_summary(results: "MultiTargetResults", args=None):
             status_text = f"Failed: {error_msg}"
             status_color = Colors.RED
 
-        output(f"  {status_icon} {target} - {c(status_text, status_color)}")
+        # Extract hostname from cache if available
+        hostname = None
+        if result.cache and result.cache.domain_info:
+            hostname = result.cache.domain_info.get("hostname")
+
+        # Build target display with hostname if available
+        if hostname:
+            target_display = f"{target} ({hostname})"
+        else:
+            target_display = target
+
+        output(f"  {status_icon} {target_display} - {c(status_text, status_color)}")
 
     output("")
 
@@ -151,10 +162,22 @@ def print_multi_target_summary(results: "MultiTargetResults", args=None):
 
     output("")
 
-    # Statistics
+    # Statistics - also compute unique users across all targets
+    unique_users = set()
+    for target, result in results.results.items():
+        if result.status == "success" and result.cache:
+            unique_users.update(result.cache.copy_paste_data.get("usernames", set()))
+
     output(c("STATISTICS", Colors.BOLD))
     output(c("-" * 50, Colors.CYAN))
-    output(f"  Total Users Enumerated: {findings['total_users']}")
+    # Show both total (sum across targets) and unique (deduplicated)
+    if unique_users:
+        output(
+            f"  Total Users Enumerated: {findings['total_users']} "
+            f"({len(unique_users)} unique)"
+        )
+    else:
+        output(f"  Total Users Enumerated: {findings['total_users']}")
     output(f"  Total Shares Found: {findings['total_shares']}")
     output(f"  Total Scan Time: {results.total_elapsed:.2f}s")
 
@@ -173,9 +196,13 @@ def _print_aggregated_copy_paste(results: "MultiTargetResults") -> None:
     """
     # Create aggregate copy-paste data
     aggregate_data = {
+        "targets": set(),
         "usernames": set(),
+        "domain_usernames": set(),  # Domain users only (DOMAIN\user)
+        "local_usernames": set(),  # Local users only (HOST\user)
         "group_names": set(),
         "share_names": set(),
+        "share_unc_paths": set(),  # UNC paths from all targets
         "kerberoastable_users": set(),
         "spns": set(),
         "asreproastable_users": set(),
@@ -196,6 +223,17 @@ def _print_aggregated_copy_paste(results: "MultiTargetResults") -> None:
         "mssql_databases": set(),
         "ftp_files": set(),
         "nfs_exports": set(),
+        # New enumeration categories
+        "gmsa_accounts": set(),
+        "gpp_passwords": set(),
+        "interface_ips": set(),
+        "disk_drives": set(),
+        "interesting_files": set(),
+        "sccm_servers": set(),
+        "vnc_ports": set(),
+        "weak_pso_groups": set(),
+        "ioxid_addresses": set(),
+        "pivot_ips": set(),
     }
 
     # Merge data from all successful targets
@@ -215,9 +253,33 @@ def _print_aggregated_copy_paste(results: "MultiTargetResults") -> None:
     output(c("=" * 80, Colors.MAGENTA + Colors.BOLD))
 
     # Print each category that has data
+    _print_list_section("Targets (Enumerated)", aggregate_data.get("targets", set()))
     _print_list_section("Usernames", aggregate_data.get("usernames", set()))
+
+    # Domain users: format as DOMAIN\user (only actual domain users)
+    domain_users = aggregate_data.get("domain_usernames", set())
+    if domain_users:
+        # Get domain from first successful DC result
+        dns_domain = None
+        for target, result in results.results.items():
+            if result.status == "success" and result.cache:
+                domain_info = result.cache.domain_info or {}
+                if domain_info.get("is_dc"):
+                    dns_domain = domain_info.get("dns_domain", "")
+                    break
+        if dns_domain:
+            domain_usernames = {f"{dns_domain}\\{u}" for u in domain_users}
+            _print_list_section("Usernames (DOMAIN\\user)", domain_usernames)
+
+    # Local users: format as HOST\user (only actual local users from member servers)
+    local_users = aggregate_data.get("local_usernames", set())
+    if local_users:
+        # Format with generic placeholder since we aggregate across multiple hosts
+        _print_list_section("Local Usernames (raw)", local_users)
+
     _print_list_section("Group Names", aggregate_data.get("group_names", set()))
     _print_list_section("Share Names", aggregate_data.get("share_names", set()))
+    _print_list_section("Share UNC Paths", aggregate_data.get("share_unc_paths", set()))
     _print_list_section(
         "Kerberoastable Usernames", aggregate_data.get("kerberoastable_users", set())
     )
@@ -242,5 +304,17 @@ def _print_aggregated_copy_paste(results: "MultiTargetResults") -> None:
     _print_list_section("MSSQL Databases", aggregate_data.get("mssql_databases", set()))
     _print_list_section("FTP Files", aggregate_data.get("ftp_files", set()))
     _print_list_section("NFS Exports", aggregate_data.get("nfs_exports", set()))
+
+    # New enumeration categories
+    _print_list_section("gMSA Accounts", aggregate_data.get("gmsa_accounts", set()))
+    _print_list_section("GPP Credentials", aggregate_data.get("gpp_passwords", set()))
+    _print_list_section("Network Interface IPs", aggregate_data.get("interface_ips", set()))
+    _print_list_section("Disk Drives", aggregate_data.get("disk_drives", set()))
+    _print_list_section("Interesting Files", aggregate_data.get("interesting_files", set()))
+    _print_list_section("SCCM Servers", aggregate_data.get("sccm_servers", set()))
+    _print_list_section("VNC Ports", aggregate_data.get("vnc_ports", set()))
+    _print_list_section("Weak PSO Groups", aggregate_data.get("weak_pso_groups", set()))
+    _print_list_section("iOXID Addresses", aggregate_data.get("ioxid_addresses", set()))
+    _print_list_section("Potential Pivot IPs", aggregate_data.get("pivot_ips", set()))
 
     output("")

@@ -20,13 +20,19 @@ def enum_pre2k(args, cache):
 
     Uses the pre2k LDAP module to find vulnerable computer accounts.
     """
-    print_section("Pre-Windows 2000 Computers", args.target)
+    target = cache.target if cache else args.target
+    print_section("Pre-Windows 2000 Computers", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping pre2k enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Checking for pre-Windows 2000 compatible computers...")
 
     # Use pre2k module
-    pre2k_args = ["ldap", args.target] + auth + ["-M", "pre2k"]
+    pre2k_args = ["ldap", target] + auth + ["-M", "pre2k"]
     rc, stdout, stderr = run_nxc(pre2k_args, args.timeout)
     debug_nxc(pre2k_args, stdout, stderr, "Pre-2K Computers")
 
@@ -96,7 +102,7 @@ def enum_pre2k(args, cache):
 
             cache.add_next_step(
                 finding=f"Pre-2K computers: {len(pre2k_computers)} found",
-                command=f"nxc smb {args.target} -u '{example_computer}$' -p '{example_pass}'",
+                command=f"nxc smb {target} -u '{example_computer}$' -p '{example_pass}'",
                 description="Authenticate with computer account (password = lowercase name)",
                 priority="high",
             )
@@ -105,20 +111,30 @@ def enum_pre2k(args, cache):
         cache.copy_paste_data["pre2k_computers"] = set(f"{c}$" for c in pre2k_computers)
 
     else:
-        # Check for common errors
+        # Check for common errors and LDAP failures
         combined = stdout + stderr
+        combined_lower = combined.lower()
+        ldap_failure_indicators = [
+            "failed to connect", "connection refused", "timed out",
+            "ldap ping failed", "failed to create connection", "kerberos sessionerror",
+        ]
         if "STATUS_ACCESS_DENIED" in combined.upper():
             status("Access denied - cannot check pre-2K computers", "error")
+        elif "STATUS_LOGON_FAILURE" in combined.upper():
+            status("Authentication failed - cannot check pre-2K computers", "error")
         elif (
             "Module not found" in combined
-            or "module" in combined.lower()
-            and "error" in combined.lower()
+            or "module" in combined_lower
+            and "error" in combined_lower
         ):
             status("pre2k module not available", "error")
+        elif any(ind in combined_lower for ind in ldap_failure_indicators) or rc != 0:
+            status("LDAP unavailable - cannot check pre-2K computers", "error")
         elif "No entries" in combined or "0 entries" in combined:
             status("No pre-Windows 2000 compatible computers found", "success")
         else:
-            status("No pre-Windows 2000 compatible computers found", "success")
+            # Default to info when uncertain, not success
+            status("No pre-Windows 2000 compatible computers found", "info")
 
     if args.json_output:
         JSON_DATA["pre2k_computers"] = {

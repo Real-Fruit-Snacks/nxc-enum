@@ -28,13 +28,14 @@ def enum_ldap_signing(args, cache):
 
     Analyzes LDAP connection output to determine if signing is enforced.
     """
-    print_section("LDAP Signing Check", args.target)
+    target = cache.target if cache else args.target
+    print_section("LDAP Signing Check", target)
 
     auth = cache.auth_args
     status("Checking LDAP signing requirements...")
 
     # Run basic LDAP connection - signing status shown in banner
-    ldap_args = ["ldap", args.target] + auth
+    ldap_args = ["ldap", target] + auth
     rc, stdout, stderr = run_nxc(ldap_args, args.timeout)
     debug_nxc(ldap_args, stdout, stderr, "LDAP Signing Check")
 
@@ -72,7 +73,7 @@ def enum_ldap_signing(args, cache):
     # Some nxc versions may not show this in the banner
     if signing_required is None:
         # Try verbose LDAP connection to get more info
-        verbose_args = ["ldap", args.target] + auth + ["--verbose"]
+        verbose_args = ["ldap", target] + auth + ["--verbose"]
         rc_v, stdout_v, stderr_v = run_nxc(verbose_args, args.timeout)
 
         combined_v = stdout_v + stderr_v
@@ -116,7 +117,7 @@ def enum_ldap_signing(args, cache):
 
         cache.add_next_step(
             finding="LDAP signing not required",
-            command=f"ntlmrelayx.py -t ldap://{args.target} --delegate-access",
+            command=f"ntlmrelayx.py -t ldap://{target} --delegate-access",
             description="LDAP relay to create machine account for RBCD attack",
             priority="high",
         )
@@ -124,7 +125,7 @@ def enum_ldap_signing(args, cache):
         output(f"  {c('[+]', Colors.GREEN)} {c('LDAP Signing: REQUIRED', Colors.GREEN)}")
         output(c("      Protected against LDAP relay attacks", Colors.GREEN))
     else:
-        output(f"  {c('[?]', Colors.YELLOW)} {c('LDAP Signing: UNKNOWN', Colors.YELLOW)}")
+        output(f"  {c('[!]', Colors.YELLOW)} {c('LDAP Signing: UNKNOWN', Colors.YELLOW)}")
         output(c("      Could not determine signing requirements", Colors.YELLOW))
 
     output("")

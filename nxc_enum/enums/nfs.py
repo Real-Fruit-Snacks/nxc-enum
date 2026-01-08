@@ -6,7 +6,7 @@ This is pure enumeration - lists exported shares without mounting.
 """
 
 from ..core.colors import Colors, c
-from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.output import JSON_DATA, debug_nxc, is_proxy_mode, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
 
@@ -16,12 +16,27 @@ def enum_nfs(args, cache):
 
     Lists exported NFS shares and their access controls.
     """
-    print_section("NFS Share Enumeration", args.target)
+    target = cache.target if cache else args.target
+    print_section("NFS Share Enumeration", target)
+
+    # Skip in proxy mode - NFS RPC doesn't work over proxychains
+    if is_proxy_mode():
+        status("Skipped in proxy mode (NFS RPC incompatible with proxychains)", "info")
+        if args.json_output:
+            JSON_DATA["nfs"] = {"accessible": False, "exports": []}
+        return
+
+    # Skip if port pre-scan determined NFS is unavailable
+    if cache.nfs_available is False:
+        status("NFS port (2049) not open - skipping", "info")
+        if args.json_output:
+            JSON_DATA["nfs"] = {"accessible": False, "exports": []}
+        return
 
     status("Checking NFS exports...")
 
     # Query NFS shares
-    nfs_args = ["nfs", args.target, "--shares"]
+    nfs_args = ["nfs", target, "--shares"]
     rc, stdout, stderr = run_nxc(nfs_args, args.timeout)
     debug_nxc(nfs_args, stdout, stderr, "NFS Shares")
 
@@ -140,8 +155,8 @@ def enum_nfs(args, cache):
 
             # Add next step
             nfs_cmd = (
-                f"showmount -e {args.target} && mkdir /tmp/nfs && "
-                f"mount -t nfs {args.target}:{world_readable[0]} /tmp/nfs"
+                f"showmount -e {target} && mkdir /tmp/nfs && "
+                f"mount -t nfs {target}:{world_readable[0]} /tmp/nfs"
             )
             cache.add_next_step(
                 finding=f"{len(world_readable)} world-accessible NFS exports",

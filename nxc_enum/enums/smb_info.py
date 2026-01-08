@@ -248,13 +248,14 @@ def get_dialect_security_notes(dialect: str) -> list:
 
 def enum_smb_info(args, cache):
     """Get SMB information including signing, dialect, and capabilities."""
-    print_section("SMB Dialect Check", args.target)
+    target = cache.target if cache else args.target
+    print_section("SMB Dialect Check", target)
 
     status("Trying on 445/tcp")
 
     # Use cached SMB connection
     auth = cache.auth_args
-    rc, stdout, stderr = cache.get_smb_basic(args.target, auth)
+    rc, stdout, stderr = cache.get_smb_basic(target, auth)
 
     if rc != 0 and "not found" in stderr:
         status("netexec not found in PATH", "error")
@@ -305,14 +306,15 @@ def enum_smb_info(args, cache):
             output(f"    {c(note, note_color)}")
 
     # Show SMBv1 status
-    output(f"  SMB 1.0: {c(str(smbv1).lower(), Colors.RED if smbv1 else Colors.GREEN)}")
+    smbv1_status = "Enabled" if smbv1 else "Disabled"
+    output(f"  SMBv1: {c(smbv1_status, Colors.RED if smbv1 else Colors.GREEN)}")
     if smbv1:
         output(
             f"    {c('WARNING: SMBv1 enabled - vulnerable to EternalBlue/WannaCry', Colors.RED)}"
         )
         cache.add_next_step(
             finding="SMBv1 enabled on target",
-            command=f"nmap -p 445 --script smb-vuln-ms17-010 {args.target}",
+            command=f"nmap -p 445 --script smb-vuln-ms17-010 {target}",
             description="Check for EternalBlue (MS17-010) vulnerability",
             priority="high",
         )
@@ -321,8 +323,8 @@ def enum_smb_info(args, cache):
     if signing:
         output(f"  Signing: {c('required', Colors.GREEN)} (secure)")
     else:
-        msg = f"  Signing: {c('not required', Colors.YELLOW)}"
-        msg += f" {c('- Relay attacks possible!', Colors.YELLOW)}"
+        msg = f"  Signing: {c('not required', Colors.RED)}"
+        msg += f" {c('- Relay attacks possible!', Colors.RED)}"
         output(msg)
 
     # Show capabilities if detected from verbose output

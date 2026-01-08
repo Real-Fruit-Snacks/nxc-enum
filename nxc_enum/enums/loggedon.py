@@ -148,14 +148,15 @@ def parse_loggedon_verbose(stdout: str) -> dict:
 
 def enum_loggedon(args, cache, is_admin: bool = True):
     """Enumerate logged on users (requires local admin)."""
-    print_section("Logged On Users", args.target)
+    target = cache.target if cache else args.target
+    print_section("Logged On Users", target)
 
     if not is_admin:
         status("Skipping: requires local admin (current user is not admin)", "info")
         return
 
     auth = cache.auth_args
-    loggedon_args = ["smb", args.target] + auth + ["--loggedon-users"]
+    loggedon_args = ["smb", target] + auth + ["--loggedon-users"]
     rc, stdout, stderr = run_nxc(loggedon_args, args.timeout)
     debug_nxc(loggedon_args, stdout, stderr, "Logged On Users")
 
@@ -186,17 +187,48 @@ def enum_loggedon(args, cache, is_admin: bool = True):
             output(f"{'-'*35}  {'-'*18}  {'-'*20}  {'-'*8}")
 
             for session in sessions:
-                user = session.get("user", "Unknown")[:35].ljust(35)
-                logon_type = session.get("logon_type", "")[:18].ljust(18)
+                user_raw = session.get("user", "Unknown")[:35]
+                logon_type_raw = session.get("logon_type", "")[:18]
                 source = session.get("source", "")[:20].ljust(20)
                 session_id = session.get("session_id", "")
 
-                output(f"{user}  {logon_type}  {source}  {session_id}")
+                # Color user based on privilege level
+                user_lower = user_raw.lower()
+                admin_names = ["administrator", "admin", "domain admins"]
+                if any(admin in user_lower for admin in admin_names):
+                    user_colored = c(user_raw.ljust(35), Colors.RED)
+                elif any(svc in user_lower for svc in ["svc", "service", "sql", "iis"]):
+                    user_colored = c(user_raw.ljust(35), Colors.YELLOW)
+                else:
+                    user_colored = user_raw.ljust(35)
+
+                # Color logon type based on security risk
+                logon_type_lower = logon_type_raw.lower()
+                if logon_type_lower in ["networkcleartext", "8"]:
+                    # NetworkCleartext is insecure - credentials sent in cleartext
+                    logon_colored = c(logon_type_raw.ljust(18), Colors.RED)
+                elif logon_type_lower in ["remoteinteractive", "10", "rdp"]:
+                    # RDP sessions - potential lateral movement
+                    logon_colored = c(logon_type_raw.ljust(18), Colors.YELLOW)
+                elif logon_type_lower in ["interactive", "2"]:
+                    # Interactive - local console access
+                    logon_colored = c(logon_type_raw.ljust(18), Colors.GREEN)
+                else:
+                    logon_colored = logon_type_raw.ljust(18)
+
+                output(f"{user_colored}  {logon_colored}  {source}  {session_id}")
         else:
             # Simple list if no additional details available
             output(c("Logged On Users:", Colors.CYAN))
             for user in users:
-                output(f"  {user}")
+                user_lower = user.lower()
+                admin_names = ["administrator", "admin", "domain admins"]
+                if any(admin in user_lower for admin in admin_names):
+                    output(f"  {c(user, Colors.RED)}")
+                elif any(svc in user_lower for svc in ["svc", "service", "sql", "iis"]):
+                    output(f"  {c(user, Colors.YELLOW)}")
+                else:
+                    output(f"  {user}")
 
         # Store in cache for potential use by other modules
         cache.loggedon_users = users
@@ -210,7 +242,7 @@ def enum_loggedon(args, cache, is_admin: bool = True):
                 user_part = user.split("\\")[-1].lower()
                 if user_part in ["administrator", "admin"]:
                     cache.add_next_step(
-                        f"Domain admin '{user}' logged on to {args.target}",
+                        f"Domain admin '{user}' logged on to {target}",
                         "# Consider credential harvesting with Mimikatz",
                         "High-value target for credential theft",
                         priority="high",

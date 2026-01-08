@@ -195,6 +195,28 @@ def create_parser():
         help="SMB shares and permissions",
     )
     enum_group.add_argument(
+        "--spider",
+        action="store_true",
+        help="Spider shares for files (metadata only by default)",
+    )
+    enum_group.add_argument(
+        "--spider-download",
+        action="store_true",
+        help="Enable file download during spidering (use with caution)",
+    )
+    enum_group.add_argument(
+        "--spider-max-size",
+        type=int,
+        default=10485760,
+        metavar="BYTES",
+        help="Max file size to download in bytes (default: 10MB)",
+    )
+    enum_group.add_argument(
+        "--spider-output",
+        metavar="DIR",
+        help="Output directory for downloaded files (default: current dir)",
+    )
+    enum_group.add_argument(
         "--policies",
         action="store_true",
         help="Password and lockout policies",
@@ -248,6 +270,11 @@ def create_parser():
         help="LAPS deployment check",
     )
     security_group.add_argument(
+        "--laps-computer",
+        metavar="PATTERN",
+        help="Filter LAPS check to computer names matching pattern (e.g., 'SRV*')",
+    )
+    security_group.add_argument(
         "--ldap-signing",
         action="store_true",
         help="LDAP signing requirements",
@@ -276,6 +303,16 @@ def create_parser():
         "--adcs",
         action="store_true",
         help="ADCS certificate templates",
+    )
+    security_group.add_argument(
+        "--adcs-server",
+        metavar="HOST",
+        help="Target specific ADCS server (e.g., 'ca01.corp.local')",
+    )
+    security_group.add_argument(
+        "--adcs-base-dn",
+        metavar="DN",
+        help="Custom base DN for ADCS search (e.g., 'CN=Configuration,DC=corp,DC=local')",
     )
     security_group.add_argument(
         "--dc-list",
@@ -315,7 +352,7 @@ def create_parser():
     security_group.add_argument(
         "--dns",
         action="store_true",
-        help="DNS records",
+        help="DNS enumeration recommendations (passive)",
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -404,9 +441,30 @@ def create_parser():
         help="Bypass mandatory hosts resolution check (not recommended)",
     )
     behavior_group.add_argument(
+        "--no-prescan",
+        action="store_true",
+        help="Disable parallel host pre-scanning (slower for large target sets)",
+    )
+    behavior_group.add_argument(
+        "--discover-only",
+        action="store_true",
+        help="Only discover live SMB hosts, skip enumeration (no creds required)",
+    )
+    behavior_group.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Only validate credentials, skip enumeration (fast credential check)",
+    )
+    behavior_group.add_argument(
         "--debug",
         action="store_true",
         help="Show raw nxc command output",
+    )
+    behavior_group.add_argument(
+        "--proxy-mode",
+        action="store_true",
+        help="Enable proxy-aware mode for proxychains/SOCKS (reduces concurrency, "
+        "increases timeouts, skips incompatible modules)",
     )
 
     return parser

@@ -9,13 +9,44 @@ from ..parsing.nxc_output import is_nxc_noise_line
 
 
 def enum_adcs(args, cache):
-    """Enumerate ADCS certificate templates and PKI infrastructure."""
-    print_section("ADCS Enumeration", args.target)
+    """Enumerate ADCS certificate templates and PKI infrastructure.
+
+    CLI Options:
+        --adcs-server: Target specific ADCS server (e.g., 'ca01.corp.local')
+        --adcs-base-dn: Custom base DN for ADCS search
+    """
+    target = cache.target if cache else args.target
+    print_section("ADCS Enumeration", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping ADCS enumeration", "error")
+        return
 
     auth = cache.auth_args
-    status("Querying ADCS certificate templates...")
 
-    adcs_args = ["ldap", args.target] + auth + ["-M", "adcs"]
+    # Check for ADCS-specific options
+    adcs_server = getattr(args, "adcs_server", None)
+    adcs_base_dn = getattr(args, "adcs_base_dn", None)
+
+    if adcs_server:
+        status(f"Querying ADCS certificate templates from: {adcs_server}...")
+    else:
+        status("Querying ADCS certificate templates...")
+
+    # Build command with optional server/base_dn
+    adcs_args = ["ldap", target] + auth + ["-M", "adcs"]
+
+    # Build module options
+    module_options = []
+    if adcs_server:
+        module_options.append(f"SERVER={adcs_server}")
+    if adcs_base_dn:
+        module_options.append(f"BASE_DN={adcs_base_dn}")
+
+    if module_options:
+        adcs_args.extend(["-o", " ".join(module_options)])
+
     rc, stdout, stderr = run_nxc(adcs_args, args.timeout)
     debug_nxc(adcs_args, stdout, stderr, "ADCS Enumeration")
 
@@ -93,7 +124,7 @@ def enum_adcs(args, cache):
         user = args.user if args.user else "<user>"
         cache.add_next_step(
             finding=f"ADCS infrastructure found ({len(ca_names)} CA)",
-            command=f"certipy find -u '{user}@{domain}' -p '<pass>' -dc-ip {args.target}",
+            command=f"certipy find -u '{user}@{domain}' -p '<pass>' -dc-ip {target}",
             description="Check for ESC1-ESC8 certificate template vulnerabilities",
             priority="high",
         )

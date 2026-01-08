@@ -4,7 +4,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..core.colors import Colors, c
-from ..core.output import JSON_DATA, output, print_section, status
+from ..core.constants import MULTI_ENUM_WORKERS, PROXY_MULTI_ENUM_WORKERS
+from ..core.output import JSON_DATA, is_proxy_mode, output, print_section, status
 from ..core.runner import run_nxc
 
 # Import verbose parsing from single-cred module
@@ -32,7 +33,8 @@ def enum_printers_multi(args, creds: list, results, cache=None):
 
     all_verbose_info = {"printers": [], "print_servers": [], "drivers": [], "info_messages": []}
 
-    with ThreadPoolExecutor(max_workers=min(len(creds), 10)) as executor:
+    workers = PROXY_MULTI_ENUM_WORKERS if is_proxy_mode() else MULTI_ENUM_WORKERS
+    with ThreadPoolExecutor(max_workers=min(len(creds), workers)) as executor:
         futures = [executor.submit(get_printers_for_cred, cred) for cred in creds]
         for future in as_completed(futures):
             try:

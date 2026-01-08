@@ -18,19 +18,25 @@ from ..parsing.nxc_output import is_nxc_noise_line
 RE_GROUP_LINE = re.compile(r"(\d+)\s+-\s+(.+)$")
 
 
-def enum_local_groups(args, cache):
+def enum_local_groups(args, cache, is_admin: bool = False):
     """Enumerate local groups on the target.
 
     Uses SMB --local-groups to list local groups via SAMRPC.
     Note: This lists groups only - members require additional enumeration.
+    Requires local admin privileges.
     """
-    print_section("Local Groups", args.target)
+    target = cache.target if cache else args.target
+    print_section("Local Groups", target)
+
+    if not is_admin:
+        status("Skipping: requires local admin (current user is not admin)", "info")
+        return
 
     auth = cache.auth_args
     status("Enumerating local groups...")
 
     # Query local groups
-    group_args = ["smb", args.target] + auth + ["--local-groups"]
+    group_args = ["smb", target] + auth + ["--local-groups"]
     rc, stdout, stderr = run_nxc(group_args, args.timeout)
     debug_nxc(group_args, stdout, stderr, "Local Groups")
 
@@ -123,15 +129,20 @@ def enum_local_groups(args, cache):
     else:
         # Check for common errors
         combined = stdout + stderr
-        if "STATUS_ACCESS_DENIED" in combined.upper():
-            status("Access denied - cannot enumerate local groups", "error")
+        combined_lower = combined.lower()
+        if (
+            "status_access_denied" in combined_lower
+            or "rpc_s_access_denied" in combined_lower
+            or "access_denied" in combined_lower
+        ):
+            status("Access denied - cannot enumerate local groups", "warning")
             output(
                 c(
                     "    Requires local admin or specific permissions",
                     Colors.YELLOW,
                 )
             )
-        elif "STATUS_LOGON_FAILURE" in combined.upper():
+        elif "status_logon_failure" in combined_lower:
             status(
                 "Authentication failed - cannot enumerate local groups",
                 "error",

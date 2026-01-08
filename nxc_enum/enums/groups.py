@@ -8,6 +8,8 @@ from ..core.constants import (
     BUILTIN_GROUP_RID_MIN,
     DOMAIN_GROUP_RID_MAX,
     DOMAIN_GROUP_RID_MIN,
+    GROUP_MEMBER_QUERY_WORKERS,
+    PROXY_GROUP_MEMBER_QUERY_WORKERS,
     RE_GROUP,
     RE_GROUP_DESC,
     RE_GROUP_DN,
@@ -17,7 +19,7 @@ from ..core.constants import (
     RE_RID_ALIAS,
     RE_RID_GROUP,
 )
-from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.output import JSON_DATA, debug_nxc, is_proxy_mode, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.classify import classify_groups, safe_int
 from ..parsing.nxc_output import is_nxc_noise_line
@@ -99,24 +101,43 @@ def parse_verbose_group_output(stdout: str) -> dict:
     return verbose_data
 
 
-def get_group_members(target: str, auth: list, group_name: str, timeout: int) -> tuple:
+def get_group_members(
+    target: str, auth: list, group_name: str, timeout: int, cn_to_sam: dict = None,
+    capture_debug: bool = False
+) -> tuple:
     """Query members of a specific group via LDAP.
 
+    Args:
+        target: Target IP or hostname
+        auth: Authentication arguments
+        group_name: Name of the group to query
+        timeout: Command timeout
+        cn_to_sam: Optional dict mapping CN (lowercase) to sAMAccountName
+                   for resolving display names to logon names
+        capture_debug: If True, return debug info instead of printing directly.
+                       This avoids threading issues with target-level buffering.
+
     Returns:
-        Tuple of (members_list, reason) where reason is one of:
-        - "ok": Successfully retrieved members
-        - "empty": Group has no members
-        - "access_denied": Access was denied
-        - "error": Some other error occurred
+        Tuple of (members_list, reason, debug_info) where:
+        - members_list: List of member names
+        - reason: "ok", "empty", "access_denied", or "error"
+        - debug_info: Tuple of (cmd_args, stdout, stderr, label) if capture_debug,
+                      else None
     """
     group_members_args = ["ldap", target] + auth + ["--groups", group_name]
     rc, stdout, stderr = run_nxc(group_members_args, timeout)
-    debug_nxc(group_members_args, stdout, stderr, f"Group Members ({group_name})")
+
+    # Capture debug info for caller to print from main thread (avoids threading issues)
+    debug_info = None
+    if capture_debug:
+        debug_info = (group_members_args, stdout, stderr, f"Group Members ({group_name})")
+    else:
+        debug_nxc(group_members_args, stdout, stderr, f"Group Members ({group_name})")
 
     # Check for access denied before parsing
     combined = (stdout + stderr).upper()
     if "STATUS_ACCESS_DENIED" in combined or "ACCESS_DENIED" in combined:
-        return [], "access_denied"
+        return [], "access_denied", debug_info
 
     members = []
     for line in stdout.split("\n"):
@@ -139,29 +160,54 @@ def get_group_members(target: str, auth: list, group_name: str, timeout: int) ->
                             break
                     if port_idx >= 0 and port_idx + 2 < len(parts):
                         member_name = " ".join(parts[port_idx + 2 :])
-                        if member_name and member_name not in members:
-                            members.append(member_name)
+                        if member_name:
+                            # Resolve CN to sAMAccountName if mapping available
+                            if cn_to_sam:
+                                resolved = cn_to_sam.get(member_name.lower())
+                                if resolved:
+                                    member_name = resolved
+
+                            if member_name not in members:
+                                members.append(member_name)
                 except (ValueError, IndexError):
                     pass
 
     if members:
-        return members, "ok"
+        return members, "ok", debug_info
     else:
-        return [], "empty"
+        return [], "empty", debug_info
 
 
 def enum_groups(args, cache):
     """Enumerate domain groups."""
-    print_section("Groups via RPC", args.target)
+    target = cache.target if cache else args.target
+    print_section("Groups via RPC", target)
 
     auth = cache.auth_args
     groups = {}
+    ldap_failed = False  # Track LDAP enumeration status
+    ldap_groups_count = 0  # Count groups from LDAP
 
     # Get groups via --groups (LDAP protocol - SMB --groups is deprecated)
     status("Enumerating domain groups")
-    groups_args = ["ldap", args.target] + auth + ["--groups"]
+    groups_args = ["ldap", target] + auth + ["--groups"]
     rc, stdout, stderr = run_nxc(groups_args, args.timeout)
     debug_nxc(groups_args, stdout, stderr, "Groups")
+
+    # Check for LDAP failures
+    combined = (stdout + stderr).lower()
+    ldap_failure_indicators = [
+        "failed to connect",
+        "connection refused",
+        "timed out",
+        "error connecting",
+        "unable to connect",
+        "status_logon_failure",
+        "ldap ping failed",
+        "kerberos sessionerror",
+    ]
+    if any(ind in combined for ind in ldap_failure_indicators) or rc != 0:
+        ldap_failed = True
 
     # Parse: Group: Domain Admins membercount: 2
     for line in stdout.split("\n"):
@@ -170,6 +216,11 @@ def enum_groups(args, cache):
             groupname = group_match.group(1).strip()
             membercount = group_match.group(2)
             groups[groupname] = {"type": "domain", "membercount": membercount}
+            ldap_groups_count += 1
+
+    # If we got LDAP groups, mark as not failed
+    if ldap_groups_count > 0:
+        ldap_failed = False
 
     # Parse verbose output for additional group details (descriptions, types, scopes)
     verbose_data = parse_verbose_group_output(stdout)
@@ -196,7 +247,7 @@ def enum_groups(args, cache):
 
     # Use cached RID brute results
     status("Enumerating builtin groups")
-    rc2, stdout2, stderr2 = cache.get_rid_brute(args.target, auth)
+    rc2, stdout2, stderr2 = cache.get_rid_brute(target, auth)
 
     # Parse group RIDs
     for line in stdout2.split("\n"):
@@ -205,6 +256,11 @@ def enum_groups(args, cache):
             rid = rid_match.group(1)
             groupname = rid_match.group(2).strip()
             rid_int = safe_int(rid, 0)
+
+            # Skip invalid/placeholder group names from RID brute
+            # RID 513 (Domain Users) sometimes returns "None" due to NetExec parsing issues
+            if groupname.lower() in ("none", "", "(null)"):
+                continue
 
             if (
                 BUILTIN_GROUP_RID_MIN <= rid_int <= BUILTIN_GROUP_RID_MAX
@@ -241,11 +297,23 @@ def enum_groups(args, cache):
         builtin_count = sum(1 for g in groups.values() if g.get("type") == "builtin")
         domain_count = sum(1 for g in groups.values() if g.get("type") == "domain")
 
-        status(
-            f"Found {len(groups)} group(s) total "
-            f"({domain_count} domain, {builtin_count} builtin, {local_count} local)",
-            "success",
-        )
+        # Indicate LDAP failure if only RID brute results
+        if ldap_failed and domain_count == 0:
+            status(
+                "LDAP enumeration failed - showing RID brute force results only",
+                "warning",
+            )
+            status(
+                f"Found {len(groups)} group(s) via RID brute "
+                f"({builtin_count} builtin, {local_count} local)",
+                "success",
+            )
+        else:
+            status(
+                f"Found {len(groups)} group(s) total "
+                f"({domain_count} domain, {builtin_count} builtin, {local_count} local)",
+                "success",
+            )
 
         categories = classify_groups(groups)
 
@@ -253,28 +321,48 @@ def enum_groups(args, cache):
         group_members = {}
         group_member_reasons = {}  # Track why a group has no members
         privileged_users = set()
+
+        # Build CN to sAMAccountName mapping for resolving group member names
+        cn_to_sam = cache.get_cn_to_sam_map()
+
         if categories["high_value"]:
             status("Enumerating high-value group members...")
 
-            def fetch_members(group_name):
-                members, reason = get_group_members(
-                    args.target, cache.auth_args, group_name, args.timeout
-                )
-                return group_name, members, reason
+            # Collect debug info to print from main thread (avoids threading issues)
+            collected_debug_info = []
 
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            def fetch_members(group_name):
+                # Capture debug info instead of printing from worker thread
+                members, reason, dbg_info = get_group_members(
+                    target, cache.auth_args, group_name, args.timeout,
+                    cn_to_sam=cn_to_sam, capture_debug=True
+                )
+                return group_name, members, reason, dbg_info
+
+            if is_proxy_mode():
+                workers = PROXY_GROUP_MEMBER_QUERY_WORKERS
+            else:
+                workers = GROUP_MEMBER_QUERY_WORKERS
+            with ThreadPoolExecutor(max_workers=workers) as executor:
                 futures = [
                     executor.submit(fetch_members, gname) for gname, _ in categories["high_value"]
                 ]
                 for future in as_completed(futures):
                     try:
-                        gname, members, reason = future.result()
+                        gname, members, reason, dbg_info = future.result()
                         group_members[gname] = members
                         group_member_reasons[gname] = reason
                         for member in members:
                             privileged_users.add(member)
+                        # Collect debug info for later printing from main thread
+                        if dbg_info:
+                            collected_debug_info.append(dbg_info)
                     except Exception as e:
                         status(f"Error fetching group members: {e}", "error")
+
+            # Print debug info from main thread (respects target-level buffering)
+            for cmd_args, stdout, stderr, label in collected_debug_info:
+                debug_nxc(cmd_args, stdout, stderr, label)
 
         cache.privileged_users = list(privileged_users)
 
@@ -400,4 +488,4 @@ def enum_groups(args, cache):
             if cache.group_descriptions:
                 JSON_DATA["group_descriptions"] = cache.group_descriptions
     else:
-        status("No groups found or unable to parse output", "warning")
+        status("No groups found or unable to parse output", "info")

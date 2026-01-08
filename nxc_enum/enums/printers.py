@@ -130,10 +130,11 @@ def parse_verbose_spooler_info(stdout: str) -> dict:
 
 def enum_printers(args, cache):
     """Enumerate printers via RPC."""
-    print_section("Printers via RPC", args.target)
+    target = cache.target if cache else args.target
+    print_section("Printers via RPC", target)
 
     auth = cache.auth_args
-    printers_args = ["smb", args.target] + auth + ["-M", "spooler"]
+    printers_args = ["smb", target] + auth + ["-M", "spooler"]
     rc, stdout, stderr = run_nxc(printers_args, args.timeout)
     debug_nxc(printers_args, stdout, stderr, "Printers (spooler)")
 
@@ -159,7 +160,7 @@ def enum_printers(args, cache):
             # Add PrintNightmare recommendation
             cache.add_next_step(
                 finding="Print spooler service running",
-                command=f"nxc smb {args.target} -u '<user>' -p '<pass>' -M printnightmare",
+                command=f"nxc smb {target} -u '<user>' -p '<pass>' -M printnightmare",
                 description="Check for PrintNightmare (CVE-2021-34527) vulnerability",
                 priority="high",
             )

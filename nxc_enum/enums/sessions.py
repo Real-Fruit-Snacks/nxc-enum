@@ -2,6 +2,7 @@
 
 import re
 
+from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
@@ -144,7 +145,8 @@ def _parse_qwinsta_line(parts: list, start_idx: int) -> dict | None:
 
 def enum_sessions(args, cache, is_admin: bool = True):
     """Enumerate active sessions (requires local admin)."""
-    print_section("Active Sessions", args.target)
+    target = cache.target if cache else args.target
+    print_section("Active Sessions", target)
 
     if not is_admin:
         status("Skipping: requires local admin (current user is not admin)", "info")
@@ -153,7 +155,7 @@ def enum_sessions(args, cache, is_admin: bool = True):
     auth = cache.auth_args
     status("Querying active sessions...")
 
-    sessions_args = ["smb", args.target] + auth + ["--qwinsta"]
+    sessions_args = ["smb", target] + auth + ["--qwinsta"]
     rc, stdout, stderr = run_nxc(sessions_args, args.timeout)
     debug_nxc(sessions_args, stdout, stderr, "Sessions (qwinsta)")
 
@@ -232,11 +234,47 @@ def enum_sessions(args, cache, is_admin: bool = True):
     # Display verbose metadata if found
     if verbose_metadata:
         if verbose_metadata.get("session_type"):
-            types = ", ".join(verbose_metadata["session_type"])
-            status(f"Session types: {types}", "info")
+            types = verbose_metadata["session_type"]
+            # Color RDP sessions in yellow to indicate remote access
+            colored_types = []
+            for t in types:
+                if "rdp" in t.lower():
+                    colored_types.append(c(t, Colors.YELLOW))
+                else:
+                    colored_types.append(c(t, Colors.GREEN))
+            status(f"Session types: {', '.join(colored_types)}", "info")
         if verbose_metadata.get("state"):
             states = ", ".join(set(verbose_metadata["state"]))
             status(f"Session states: {states}", "info")
+
+    # Display session details with color highlighting
+    if session_details:
+        output("")
+        output(c("SESSION DETAILS:", Colors.CYAN))
+        for session in session_details:
+            session_name = session.get("session_name", session.get("raw", "Unknown"))
+            user = session.get("user", "")
+            state = session.get("state", "")
+
+            # Color based on session type
+            if "rdp" in session_name.lower():
+                name_colored = c(session_name, Colors.YELLOW)
+            elif "console" in session_name.lower():
+                name_colored = c(session_name, Colors.GREEN)
+            else:
+                name_colored = session_name
+
+            # Build output line
+            line = f"  {name_colored}"
+            if user:
+                # Check for admin users
+                if any(admin in user.lower() for admin in ["admin", "domain admins"]):
+                    line += f" - {c(user, Colors.RED)}"
+                else:
+                    line += f" - {user}"
+            if state:
+                line += f" ({state})"
+            output(line)
 
     if not found_sessions:
         if "access_denied" in stderr.lower() or "access denied" in stdout.lower():

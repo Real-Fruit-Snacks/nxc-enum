@@ -4,7 +4,8 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
+from ..core.constants import MULTI_ENUM_WORKERS, PROXY_MULTI_ENUM_WORKERS
+from ..core.output import JSON_DATA, debug_nxc, is_proxy_mode, output, print_section, status
 from ..core.runner import run_nxc
 
 _lock = threading.Lock()
@@ -66,7 +67,8 @@ def enum_av_multi(args, creds: list, results, cache=None):
 
     all_services = []  # Aggregate detailed service names from all credentials
 
-    with ThreadPoolExecutor(max_workers=min(len(admin_creds), 10)) as executor:
+    workers = PROXY_MULTI_ENUM_WORKERS if is_proxy_mode() else MULTI_ENUM_WORKERS
+    with ThreadPoolExecutor(max_workers=min(len(admin_creds), workers)) as executor:
         futures = [executor.submit(get_av_for_cred, cred) for cred in admin_creds]
         for future in as_completed(futures):
             try:

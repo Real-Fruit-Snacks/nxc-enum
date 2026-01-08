@@ -2,7 +2,8 @@
 
 from concurrent.futures import ThreadPoolExecutor
 
-from ..core.output import JSON_DATA, print_section, status
+from ..core.constants import PORT_CHECK_TIMEOUT, PROXY_PORT_CHECK_TIMEOUT
+from ..core.output import JSON_DATA, is_proxy_mode, print_section, status
 from ..core.runner import check_port
 
 
@@ -18,9 +19,12 @@ def enum_listeners(args, listener_results: dict, cache=None):
         (139, "SMB over NetBIOS"),
     ]
 
+    # Use proxy-aware timeout if proxy mode is enabled
+    port_timeout = PROXY_PORT_CHECK_TIMEOUT if is_proxy_mode() else PORT_CHECK_TIMEOUT
+
     def check_single_port(port_info):
         port, name = port_info
-        is_open = check_port(target, port)
+        is_open = check_port(target, port, timeout=port_timeout)
         return (name, port, is_open)
 
     # Run all port checks in parallel

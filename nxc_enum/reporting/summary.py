@@ -29,7 +29,9 @@ def print_executive_summary(args, cache):
         target_desc = fqdn
     output(f"  Target:      {target} ({target_desc})")
     if is_dc:
-        output(f"  Role:        {c('Domain Controller', Colors.BOLD)}")
+        output(f"  Role:        {c('Domain Controller', Colors.RED + Colors.BOLD)}")
+    else:
+        output("  Role:        Member Server")
     if dns_domain:
         output(f"  Domain:      {dns_domain}")
     if domain_sid:
@@ -50,8 +52,10 @@ def print_executive_summary(args, cache):
         output(msg)
 
     # Password Policy
-    min_len = policy_info.get("Minimum password length", "Unknown")
-    lockout = policy_info.get("Lockout threshold", "None")
+    min_len = policy_info.get("Minimum password length")
+    lockout = policy_info.get("Lockout threshold")
+    # Check if we have any real policy values (not all Unknown/None)
+    has_policy_data = any(v is not None for v in policy_info.values())
 
     if min_len and min_len != "Unknown":
         try:
@@ -65,12 +69,15 @@ def print_executive_summary(args, cache):
         except ValueError:
             output(f"[*] Min Password Length: {min_len}")
     else:
-        output(f"[*] Min Password Length: {min_len}")
+        output(f"[*] Min Password Length: {c('Unknown', Colors.YELLOW)}")
 
-    if lockout == "None" or lockout == "0" or not lockout:
+    # Only claim "password spraying safe" if we actually have policy data
+    if lockout == "0" or (lockout is None and has_policy_data):
         msg = f"[!] Lockout Threshold: {c('NONE', Colors.RED)}"
         msg += f" - {c('Password spraying safe!', Colors.RED)}"
         output(msg)
+    elif lockout is None and not has_policy_data:
+        output(f"[*] Lockout Threshold: {c('Unknown', Colors.YELLOW)}")
     else:
         output(f"[+] Lockout Threshold: {c(str(lockout), Colors.GREEN)}")
 
@@ -88,6 +95,8 @@ def print_executive_summary(args, cache):
         if len(cache.av_products) > 3:
             av_list += f" (+{len(cache.av_products) - 3} more)"
         output(f"[!] AV/EDR: {c(av_list, Colors.YELLOW)}")
+    elif cache.av_check_skipped:
+        output(f"[*] AV/EDR: {c('Not checked (requires admin)', Colors.YELLOW)}")
     else:
         output(f"[+] AV/EDR: {c('None detected', Colors.GREEN)}")
 
@@ -138,7 +147,8 @@ def print_executive_summary(args, cache):
     quick_wins = []
     if not signing:
         quick_wins.append("SMB relay attacks (signing disabled)")
-    if lockout == "None" or lockout == "0" or not lockout:
+    # Only add password spraying if we confirmed no lockout (not just unknown)
+    if lockout == "0" or (lockout is None and has_policy_data):
         quick_wins.append("Password spraying (no lockout)")
     if cache.kerberoastable:
         quick_wins.append(f"Kerberoasting ({len(cache.kerberoastable)} accounts with SPNs)")

@@ -10,12 +10,18 @@ from ..parsing.nxc_output import is_nxc_noise_line
 
 def enum_maq(args, cache):
     """Check machine account quota."""
-    print_section("Machine Account Quota", args.target)
+    target = cache.target if cache else args.target
+    print_section("Machine Account Quota", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping MAQ enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Querying machine account quota...")
 
-    maq_args = ["ldap", args.target] + auth + ["-M", "maq"]
+    maq_args = ["ldap", target] + auth + ["-M", "maq"]
     rc, stdout, stderr = run_nxc(maq_args, args.timeout)
     debug_nxc(maq_args, stdout, stderr, "Machine Account Quota")
 
@@ -47,12 +53,20 @@ def enum_maq(args, cache):
                     quota = int(numbers[0])
                     break
 
+    # Check for LDAP failures
+    combined = stdout + stderr
+    ldap_failed = (
+        "Failed to create connection" in combined
+        or "Failed to connect" in combined.lower()
+        or "ldap connection failed" in combined.lower()
+    )
+
     cache.machine_account_quota = quota
 
     if quota is not None:
         if quota > 0:
             status(
-                f"Machine Account Quota: {c(str(quota), Colors.YELLOW)} (users can add computers)",
+                f"Machine Account Quota: {c(str(quota), Colors.RED)} - RBCD attacks possible!",
                 "warning",
             )
 
@@ -68,6 +82,8 @@ def enum_maq(args, cache):
             )
         else:
             status(f"Machine Account Quota: {quota} (users cannot add computers)", "success")
+    elif ldap_failed:
+        status("LDAP unavailable - cannot determine machine account quota", "error")
     else:
         status("Could not determine machine account quota", "info")
 

@@ -1,17 +1,17 @@
-"""Hosts file resolution validation for DC hostname."""
+"""Hosts file resolution validation for target hostname."""
 
 import socket
 from typing import Optional, Tuple
 
 from ..core.constants import RE_DOMAIN, RE_HOSTNAME
-from ..core.output import status
+from ..core.output import is_proxy_mode, status
 from ..core.runner import run_nxc
 
 
 def early_hosts_check(target: str, timeout: int) -> Tuple[bool, Optional[str]]:
     """Perform early hosts resolution check before any enumeration.
 
-    Makes an unauthenticated SMB connection to get the DC hostname from the banner,
+    Makes an unauthenticated SMB connection to get the target hostname from the banner,
     then verifies that hostname resolves to the target IP.
 
     Args:
@@ -23,7 +23,12 @@ def early_hosts_check(target: str, timeout: int) -> Tuple[bool, Optional[str]]:
         - success=True if hostname resolves correctly or check cannot be performed
         - hosts_line contains the /etc/hosts line suggestion if resolution failed
     """
-    status("Verifying DC hostname resolution...", "info")
+    # Skip hostname validation in proxy mode (DNS bypasses proxy)
+    if is_proxy_mode():
+        status("Hostname validation skipped in proxy mode (use IP addresses)", "info")
+        return True, None
+
+    status("Verifying target hostname resolution...", "info")
 
     # Make unauthenticated SMB connection to get banner with hostname
     # Using empty creds just to grab the banner - will get auth failure but that's ok
@@ -63,7 +68,7 @@ def early_hosts_check(target: str, timeout: int) -> Tuple[bool, Optional[str]]:
 
     # Check if resolution matches target
     if resolved_ip == target:
-        status(f"DC hostname '{fqdn}' resolves correctly", "success")
+        status(f"Target hostname '{fqdn}' resolves correctly", "success")
         return True, None
 
     # Generate hosts file line
@@ -118,8 +123,55 @@ def extract_hostname_from_smb(cache) -> None:
         cache.domain_info["domain_name"] = dns_domain.split(".")[0].upper()
 
 
+def check_hosts_resolution_from_info(
+    target_ip: str, smb_info: dict
+) -> Tuple[bool, Optional[str]]:
+    """Check hosts resolution using pre-extracted SMB info.
+
+    This avoids a second SMB call since validate_host_smb() already extracted
+    hostname and domain from the banner.
+
+    Args:
+        target_ip: The target IP address provided by user
+        smb_info: Dict with hostname, dns_domain, fqdn, domain_name from SMB validation
+
+    Returns:
+        Tuple of (success: bool, hosts_line: str | None)
+        - success=True if hostname resolves correctly or check cannot be performed
+        - hosts_line contains the /etc/hosts line suggestion if resolution failed
+    """
+    hostname = smb_info.get("hostname")
+    fqdn = smb_info.get("fqdn")
+    domain_name = smb_info.get("domain_name", "")
+
+    # Cannot check without hostname data
+    if not hostname or not fqdn:
+        return True, None
+
+    # Attempt DNS resolution
+    try:
+        resolved_ip = socket.gethostbyname(fqdn)
+    except socket.gaierror:
+        resolved_ip = None
+
+    # Check if resolution matches target
+    if resolved_ip == target_ip:
+        status(f"Target hostname '{fqdn}' resolves correctly", "success")
+        return True, None
+
+    # Generate hosts file line
+    # Format: IP FQDN NETBIOS_DOMAIN HOSTNAME
+    parts = [target_ip, fqdn]
+    if domain_name:
+        parts.append(domain_name)
+    parts.append(hostname)
+
+    hosts_line = "  ".join(parts)
+    return False, hosts_line
+
+
 def check_hosts_resolution(target_ip: str, cache) -> Tuple[bool, Optional[str]]:
-    """Check if DC hostname resolves to the target IP.
+    """Check if target hostname resolves to the target IP.
 
     Args:
         target_ip: The target IP address provided by user

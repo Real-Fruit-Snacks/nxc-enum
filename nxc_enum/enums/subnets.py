@@ -19,13 +19,19 @@ def enum_subnets(args, cache):
 
     Uses the get-network LDAP module to enumerate AD site/subnet configuration.
     """
-    print_section("AD Sites and Subnets", args.target)
+    target = cache.target if cache else args.target
+    print_section("AD Sites and Subnets", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping AD subnet enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Enumerating AD sites and subnets...")
 
     # Use get-network module
-    subnet_args = ["ldap", args.target] + auth + ["-M", "get-network"]
+    subnet_args = ["ldap", target] + auth + ["-M", "get-network"]
     rc, stdout, stderr = run_nxc(subnet_args, args.timeout)
     debug_nxc(subnet_args, stdout, stderr, "AD Subnets")
 
@@ -43,6 +49,18 @@ def enum_subnets(args, cache):
     ]
     if any(indicator in combined for indicator in exception_indicators):
         status("AD subnet enumeration failed (module error)", "error")
+        output("")
+        output(c("ALTERNATIVE: Query AD subnets directly with ldapsearch:", Colors.BLUE))
+        # Get domain components from cache
+        dns_domain = cache.domain_info.get("dns_domain", "") if cache.domain_info else ""
+        if dns_domain:
+            dc_parts = ",".join([f"DC={p}" for p in dns_domain.split(".")])
+            base_dn = f"CN=Subnets,CN=Sites,CN=Configuration,{dc_parts}"
+        else:
+            base_dn = "CN=Subnets,CN=Sites,CN=Configuration,DC=domain,DC=local"
+        output(f"    ldapsearch -H ldap://{target} -D '<user>@<domain>' -w '<pass>' \\")
+        output(f"      -b '{base_dn}' '(objectClass=subnet)' cn siteObject")
+        output("")
         if args.json_output:
             JSON_DATA["ad_subnets"] = {"error": "Module exception"}
         return

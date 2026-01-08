@@ -43,6 +43,10 @@ def _substitute_credentials(command: str, args, cache) -> str:
         result = re.sub(r"'[A-Za-z0-9._-]+\\\\?<user>'", f"'{domain}\\\\{user}'", result)
         # Handle domain\<user> format (without quotes)
         result = re.sub(r"([A-Za-z0-9._-]+)\\\\?<user>", f"{domain}\\\\{user}", result)
+        # Handle -u <user>@<domain> format (both placeholders) - must come before other @domain patterns
+        result = re.sub(r"-u\s+<user>@<domain>", f"-u '{user}@{domain}'", result)
+        # Handle standalone <user>@<domain> format (both placeholders)
+        result = re.sub(r"<user>@<domain>", f"{user}@{domain}", result)
         # Handle '<user>@domain.local' format
         result = re.sub(r"'<user>@[A-Za-z0-9._-]+'", f"'{user}@{domain}'", result)
         # Handle <user>@domain format without quotes
@@ -50,17 +54,24 @@ def _substitute_credentials(command: str, args, cache) -> str:
 
     # Substitute password patterns (before user, to handle -p '<pass>' correctly)
     if password:
+        # Escape special regex characters in password for safe substitution
+        safe_password = password.replace("\\", "\\\\").replace("'", "'\"'\"'")
         # Handle -p '<pass>' (quotes around placeholder)
-        result = re.sub(r"-p\s+'<pass(?:word)?>'", f"-p '{password}'", result)
+        result = re.sub(r"-p\s+'<pass(?:word)?>'", f"-p '{safe_password}'", result)
         # Handle -p "<pass>"
-        result = re.sub(r'-p\s+"<pass(?:word)?>"', f"-p '{password}'", result)
+        result = re.sub(r'-p\s+"<pass(?:word)?>"', f"-p '{safe_password}'", result)
         # Handle -p <pass> (no quotes)
-        result = re.sub(r"-p\s+<pass(?:word)?>", f"-p '{password}'", result)
+        result = re.sub(r"-p\s+<pass(?:word)?>", f"-p '{safe_password}'", result)
         # Handle standalone '<pass>' or "<pass>"
-        result = re.sub(r"'<pass(?:word)?>'", f"'{password}'", result)
-        result = re.sub(r'"<pass(?:word)?>"', f"'{password}'", result)
+        result = re.sub(r"'<pass(?:word)?>'", f"'{safe_password}'", result)
+        result = re.sub(r'"<pass(?:word)?>"', f"'{safe_password}'", result)
         # Handle standalone <pass> (no quotes) - be careful not to break other things
-        result = re.sub(r"(?<!['\"]):<pass(?:word)?>(?!['\"])", f":{password}", result)
+        result = re.sub(r"(?<!['\"]):<pass(?:word)?>(?!['\"])", f":{safe_password}", result)
+        # Handle impacket format inside quotes: 'domain/user:<pass>' -> 'domain/user:password'
+        # This matches :<pass> when followed by a closing single quote
+        result = re.sub(r":<pass(?:word)?>(?=')", f":{safe_password}", result)
+        # Handle smbclient format: -U 'user%<password>' or -U user%<password>
+        result = re.sub(r"%<pass(?:word)?>", f"%{safe_password}", result)
     elif ntlm_hash:
         # Replace password auth with hash auth
         result = re.sub(r"-p\s+'<pass(?:word)?>'", f"-H '{ntlm_hash}'", result)

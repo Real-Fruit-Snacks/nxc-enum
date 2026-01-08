@@ -433,11 +433,12 @@ def _display_per_host_info(verbose_data: dict):
 
 def enum_signing(args, cache):
     """Check SMB signing requirements with verbose output parsing."""
-    print_section("SMB Signing Check", args.target)
+    target = cache.target if cache else args.target
+    print_section("SMB Signing Check", target)
 
     status("Checking SMB signing requirements...")
 
-    signing_args = ["smb", args.target, "--gen-relay-list", "/dev/null"]
+    signing_args = ["smb", target, "--gen-relay-list", "/dev/null"]
     rc, stdout, stderr = run_nxc(signing_args, args.timeout)
     debug_nxc(signing_args, stdout, stderr, "SMB Signing")
 
@@ -460,8 +461,8 @@ def enum_signing(args, cache):
                 if host not in hosts_without_signing:
                     hosts_without_signing.append(host)
             else:
-                if args.target not in hosts_without_signing:
-                    hosts_without_signing.append(args.target)
+                if target not in hosts_without_signing:
+                    hosts_without_signing.append(target)
 
     # Merge hosts from verbose parsing
     for host in verbose_data.get("hosts_signing_not_required", []):
@@ -502,7 +503,7 @@ def enum_signing(args, cache):
         # Add relay attack recommendation
         cache.add_next_step(
             finding="SMB signing not required",
-            command=f"ntlmrelayx.py -t {args.target} -smb2support",
+            command=f"ntlmrelayx.py -t {target} -smb2support",
             description="Relay captured NTLM authentication to execute commands",
             priority="high",
         )
@@ -511,7 +512,7 @@ def enum_signing(args, cache):
         if verbose_data.get("smbv1_enabled"):
             cache.add_next_step(
                 finding="SMBv1 enabled on target",
-                command=f"nmap -p 445 --script smb-vuln-ms17-010 {args.target}",
+                command=f"nmap -p 445 --script smb-vuln-ms17-010 {target}",
                 description="Check for EternalBlue (MS17-010) vulnerability",
                 priority="high",
             )

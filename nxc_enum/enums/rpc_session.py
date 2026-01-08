@@ -174,14 +174,15 @@ def check_session(args, session_type: str, cmd_args: list, label: str) -> tuple:
 
 def enum_rpc_session(args, cache):
     """Check RPC session access (null, guest, authenticated)."""
-    print_section("RPC Session Check", args.target)
+    target = cache.target if cache else args.target
+    print_section("RPC Session Check", target)
 
     sessions = {}
     session_details = {}  # Store verbose details for each session type
 
     # Check null session
     status("Check for anonymous access (null session)")
-    null_args = ["smb", args.target, "-u", "", "-p", ""]
+    null_args = ["smb", target, "-u", "", "-p", ""]
     null_success, null_verbose, null_stdout, _ = check_session(
         args, "null", null_args, "Null Session"
     )
@@ -213,7 +214,7 @@ def enum_rpc_session(args, cache):
     if args.user and (args.password or args.hash):
         status("Check for password authentication")
         auth = cache.auth_args
-        rc, stdout, stderr = cache.get_smb_basic(args.target, auth)
+        rc, stdout, stderr = cache.get_smb_basic(target, auth)
         auth_verbose = parse_verbose_session_info(stdout, stderr)
         auth_success = "[+]" in stdout
         sessions["authenticated"] = auth_success
@@ -237,7 +238,7 @@ def enum_rpc_session(args, cache):
 
     # Check guest session
     status("Check for guest access")
-    guest_args = ["smb", args.target, "-u", "guest", "-p", ""]
+    guest_args = ["smb", target, "-u", "guest", "-p", ""]
     guest_success, guest_verbose, guest_stdout, _ = check_session(
         args, "guest", guest_args, "Guest Session"
     )

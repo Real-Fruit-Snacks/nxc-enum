@@ -14,18 +14,24 @@ from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
 
 
-def enum_bitlocker(args, cache):
+def enum_bitlocker(args, cache, is_admin: bool = False):
     """Check BitLocker encryption status on the target.
 
     Uses the bitlocker SMB module to query encryption status.
+    Requires local admin privileges.
     """
-    print_section("BitLocker Status", args.target)
+    target = cache.target if cache else args.target
+    print_section("BitLocker Status", target)
+
+    if not is_admin:
+        status("Skipping: requires local admin (current user is not admin)", "info")
+        return
 
     auth = cache.auth_args
     status("Checking BitLocker encryption status...")
 
     # Use bitlocker module
-    bitlocker_args = ["smb", args.target] + auth + ["-M", "bitlocker"]
+    bitlocker_args = ["smb", target] + auth + ["-M", "bitlocker"]
     rc, stdout, stderr = run_nxc(bitlocker_args, args.timeout)
     debug_nxc(bitlocker_args, stdout, stderr, "BitLocker")
 
@@ -138,7 +144,7 @@ def enum_bitlocker(args, cache):
             or "module" in combined.lower()
             and "error" in combined.lower()
         ):
-            status("bitlocker module not available", "error")
+            status("Bitlocker module not available", "error")
         elif rc != 0:
             status("Could not query BitLocker status", "error")
         else:

@@ -179,12 +179,75 @@ def _classify_admin_accounts(accounts: list) -> dict:
 
 def enum_admin_count(args, cache):
     """Find accounts with adminCount attribute."""
-    print_section("AdminCount Accounts", args.target)
+    target = cache.target if cache else args.target
+    print_section("AdminCount Accounts", target)
 
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping adminCount enumeration", "error")
+        return
+
+    # Try to use batch data first (avoids extra LDAP query if cache was primed)
+    batch_accounts = cache.get_admin_count_from_batch()
+    if batch_accounts:
+        status("Using cached batch data for adminCount accounts...")
+        accounts = batch_accounts
+        account_details = [
+            {"name": a, "groups": [], "account_type": None,
+             "admin_count_set": None, "protected_by": None, "status": None}
+            for a in accounts
+        ]
+
+        # Store in cache
+        cache.admin_count_accounts = accounts
+        cache.admin_count_details = account_details
+
+        if accounts:
+            status(f"Found {len(accounts)} account(s) with adminCount=1:", "warning")
+            output("")
+
+            # Classify and display accounts
+            classified = _classify_admin_accounts(account_details)
+            has_categories = sum(1 for v in classified.values() if v) > 1
+
+            if has_categories:
+                if classified["users"]:
+                    output(c(f"  User Accounts ({len(classified['users'])})", Colors.CYAN))
+                    for acct in classified["users"]:
+                        _print_account_detail(acct)
+                if classified["service_accounts"]:
+                    svc_count = len(classified['service_accounts'])
+                    output(c(f"  Service Accounts ({svc_count})", Colors.YELLOW))
+                    for acct in classified["service_accounts"]:
+                        _print_account_detail(acct)
+                if classified["computers"]:
+                    output(c(f"  Computer Accounts ({len(classified['computers'])})", Colors.CYAN))
+                    for acct in classified["computers"]:
+                        _print_account_detail(acct)
+                if classified["groups"]:
+                    output(c(f"  Groups ({len(classified['groups'])})", Colors.CYAN))
+                    for acct in classified["groups"]:
+                        _print_account_detail(acct)
+            else:
+                for acct in account_details:
+                    _print_account_detail(acct)
+
+            output("")
+            output(c("These accounts have (or had) elevated privileges", Colors.CYAN))
+            cache.copy_paste_data["admincount_accounts"].update(a.lower() for a in accounts)
+        else:
+            status("No accounts with adminCount attribute found", "info")
+
+        if args.json_output:
+            JSON_DATA["admin_count"] = {"accounts": accounts, "details": account_details,
+                                        "summary": {"total": len(accounts)}}
+        return
+
+    # Fall back to LDAP query if batch data unavailable
     auth = cache.auth_args
     status("Querying accounts with adminCount=1...")
 
-    admin_args = ["ldap", args.target] + auth + ["--admin-count"]
+    admin_args = ["ldap", target] + auth + ["--admin-count"]
     rc, stdout, stderr = run_nxc(admin_args, args.timeout)
     debug_nxc(admin_args, stdout, stderr, "AdminCount")
 
@@ -301,8 +364,8 @@ def enum_admin_count(args, cache):
         # Print summary of verbose data if available
         _print_verbose_summary(account_details)
 
-        # Store for aggregated copy-paste section
-        cache.copy_paste_data["admincount_accounts"].update(accounts)
+        # Store for aggregated copy-paste section (lowercase for deduplication)
+        cache.copy_paste_data["admincount_accounts"].update(a.lower() for a in accounts)
     else:
         status("No accounts with adminCount attribute found", "info")
 

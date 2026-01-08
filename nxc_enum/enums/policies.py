@@ -176,10 +176,11 @@ def parse_verbose_policy_info(stdout: str) -> dict:
 
 def enum_policies(args, cache):
     """Enumerate password policies."""
-    print_section("Policies via RPC", args.target)
+    target = cache.target if cache else args.target
+    print_section("Policies via RPC", target)
 
     auth = cache.auth_args
-    policies_args = ["smb", args.target] + auth + ["--pass-pol"]
+    policies_args = ["smb", target] + auth + ["--pass-pol"]
     rc, stdout, stderr = run_nxc(policies_args, args.timeout)
     debug_nxc(policies_args, stdout, stderr, "Password Policies")
 
@@ -188,9 +189,6 @@ def enum_policies(args, cache):
         return
 
     status("Trying port 445/tcp")
-    status("Found policy:", "success")
-
-    output("Domain password information:")
 
     policies = {
         "Minimum password length": None,
@@ -226,6 +224,15 @@ def enum_policies(args, cache):
                     policies[key] = value
                     break
 
+    # Check if we got any real policy values (not all Unknown/None)
+    has_real_values = any(v is not None for v in policies.values())
+
+    if has_real_values:
+        status("Found policy:", "success")
+    else:
+        status("Policy retrieved (limited information):", "info")
+
+    output("Domain password information:")
     output(f"  Password history length: {policies.get('Password history length') or 'Unknown'}")
 
     min_len = policies.get("Minimum password length") or "Unknown"
@@ -252,20 +259,28 @@ def enum_policies(args, cache):
     )
     output(f"  Lockout duration: {policies.get('Lockout duration') or 'Unknown'}")
 
-    lockout = policies.get("Lockout threshold") or "None"
-    if lockout == "None" or lockout == "0" or not lockout:
-        msg = f"  Lockout threshold: {c('None', Colors.YELLOW)}"
-        msg += f" {c('← Password spraying safe!', Colors.YELLOW)}"
+    lockout = policies.get("Lockout threshold")
+    # Only claim "password spraying safe" if we actually retrieved policy data
+    # (not when all values are Unknown due to failed retrieval)
+    if lockout == "0" or (lockout is None and has_real_values):
+        # We have policy data and lockout is explicitly 0 or None
+        msg = f"  Lockout threshold: {c('None', Colors.RED)}"
+        msg += f" {c('← Password spraying safe!', Colors.RED)}"
         output(msg)
 
         # Add password spraying recommendation
         cache.add_next_step(
             finding="No account lockout policy",
-            command=f"nxc smb {args.target} -u users.txt -p passwords.txt --continue-on-success",
+            command=f"nxc smb {target} -u users.txt -p passwords.txt --continue-on-success",
             description="Password spraying is safe - no lockout threshold configured",
             priority="medium",
         )
-    else:
+    elif lockout is None and not has_real_values:
+        # Policy retrieval failed - we don't know the actual lockout threshold
+        msg = f"  Lockout threshold: {c('Unknown', Colors.YELLOW)}"
+        msg += f" {c('← Caution: policy data unavailable', Colors.YELLOW)}"
+        output(msg)
+    elif lockout:
         output(f"  Lockout threshold: {c(lockout, Colors.GREEN)}")
 
     # Parse verbose output for additional policy metadata
@@ -292,7 +307,7 @@ def enum_policies(args, cache):
     if verbose_info.get("clear_text_passwords"):
         cache.add_next_step(
             finding="Reversible encryption enabled",
-            command=f"nxc ldap {args.target} -u <user> -p <pass> --asreproast output.txt",
+            command=f"nxc ldap {target} -u <user> -p <pass> --asreproast output.txt",
             description="Clear text passwords may be stored - check for AS-REP roastable accounts",
             priority="high",
         )
@@ -302,7 +317,7 @@ def enum_policies(args, cache):
             if fgpp.get("applies_to"):
                 cache.add_next_step(
                     finding=f"Fine-grained password policy: {fgpp.get('name', 'Unknown')}",
-                    command=f"nxc ldap {args.target} -u <user> -p <pass> -M get-desc-users",
+                    command=f"nxc ldap {target} -u <user> -p <pass> -M get-desc-users",
                     description=f"FGPP applies to: {', '.join(fgpp.get('applies_to', []))}",
                     priority="low",
                 )

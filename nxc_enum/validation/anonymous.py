@@ -16,6 +16,7 @@ class AnonymousSessionResult:
     null_success: bool = False
     guest_success: bool = False
     ldap_anonymous: bool = False
+    ldap_unavailable: bool = False  # LDAP service unreachable (not a DC)
     working_credential: Optional[Credential] = None
     session_type: Optional[str] = None  # "null", "guest", or None
 
@@ -66,7 +67,7 @@ def probe_guest_session(target: str, timeout: int) -> tuple[bool, str, str]:
     return success, stdout, stderr
 
 
-def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str]:
+def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str, bool]:
     """Probe for LDAP anonymous bind access.
 
     Uses: nxc ldap <target> -u '' -p ''
@@ -76,7 +77,9 @@ def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str]:
         timeout: Command timeout in seconds
 
     Returns:
-        Tuple of (success, stdout, stderr)
+        Tuple of (success, stdout, stderr, connection_failed)
+        - success: True if LDAP anonymous bind worked
+        - connection_failed: True if LDAP service itself is unreachable (not a DC)
     """
     cmd_args = ["ldap", target, "-u", "", "-p", ""]
     rc, stdout, stderr = run_nxc(cmd_args, timeout)
@@ -84,12 +87,31 @@ def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str]:
 
     # Check for successful LDAP connection
     combined = stdout + stderr
-    # LDAP success typically shows domain info without auth errors
-    success = (
-        "[+]" in combined or "LDAP" in combined.upper()
-    ) and "STATUS_LOGON_FAILURE" not in combined.upper()
+    combined_lower = combined.lower()
 
-    return success, stdout, stderr
+    # Check for explicit connection failures (LDAP service unavailable)
+    failure_indicators = [
+        "failed to create connection object",  # nxc LDAP-specific error
+        "failed to connect",
+        "connection refused",
+        "timed out",
+        "timeout",
+        "error connecting",
+        "unable to connect",
+        "connection error",
+        "no route to host",
+        "network unreachable",
+    ]
+    has_connection_failure = any(ind in combined_lower for ind in failure_indicators)
+
+    # LDAP success requires [+] indicator and no connection/auth failures
+    success = (
+        "[+]" in combined
+        and not has_connection_failure
+        and "STATUS_LOGON_FAILURE" not in combined.upper()
+    )
+
+    return success, stdout, stderr, has_connection_failure
 
 
 def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
@@ -135,9 +157,11 @@ def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
             )
 
     # Try LDAP anonymous bind
-    ldap_success, _, _ = probe_ldap_anonymous(target, timeout)
+    ldap_success, _, _, ldap_conn_failed = probe_ldap_anonymous(target, timeout)
     if ldap_success:
         result.ldap_anonymous = True
+    elif ldap_conn_failed:
+        result.ldap_unavailable = True
 
     return result
 
@@ -219,7 +243,9 @@ def probe_anonymous_sessions(
 
     # LDAP Anonymous Bind
     status("Probing LDAP anonymous bind...", "info")
-    ldap_success, ldap_stdout, ldap_stderr = probe_ldap_anonymous(target, timeout)
+    ldap_success, ldap_stdout, ldap_stderr, ldap_conn_failed = probe_ldap_anonymous(
+        target, timeout
+    )
 
     if ldap_success:
         result.ldap_anonymous = True
@@ -229,6 +255,10 @@ def probe_anonymous_sessions(
             status("LDAP anonymous bind works but search requires authentication", "info")
         else:
             status("LDAP anonymous bind available!", "success")
+    elif ldap_conn_failed:
+        # LDAP service itself is unreachable (not a Domain Controller)
+        result.ldap_unavailable = True
+        status("LDAP service unavailable (not a Domain Controller)", "info")
     else:
         ldap_combined = (ldap_stdout + ldap_stderr).upper()
         if "STATUS_ACCESS_DENIED" in ldap_combined:
@@ -248,7 +278,11 @@ def probe_anonymous_sessions(
 
     if findings:
         status(f"Anonymous access: {', '.join(findings)}", "warning")
+    elif result.ldap_unavailable:
+        # LDAP service unreachable - don't claim "(good)", just informational
+        status("No anonymous access available (LDAP service unavailable)", "info")
     else:
+        # All services accessible but explicitly rejected anonymous access
         if has_creds:
             status("No anonymous access available (good)", "success")
         else:

@@ -98,10 +98,11 @@ def parse_verbose_share_info(stdout: str) -> dict:
 
 def enum_shares(args, cache):
     """Enumerate SMB shares."""
-    print_section("Shares via RPC", args.target)
+    target = cache.target if cache else args.target
+    print_section("Shares via RPC", target)
 
     auth = cache.auth_args
-    shares_args = ["smb", args.target] + auth + ["--shares"]
+    shares_args = ["smb", target] + auth + ["--shares"]
     rc, stdout, stderr = run_nxc(shares_args, args.timeout)
     debug_nxc(shares_args, stdout, stderr, "Shares")
 
@@ -261,12 +262,15 @@ def enum_shares(args, cache):
 
             for share_name, perms, remark, share_type, max_users in accessible:
                 if "READ" in perms and "WRITE" in perms:
+                    # READ+WRITE is highest risk - can read and write data
                     access_padded = "READ,WRITE".ljust(12)
-                    access_str = c(access_padded, Colors.GREEN)
+                    access_str = c(access_padded, Colors.RED + Colors.BOLD)
                 elif "WRITE" in perms:
+                    # WRITE-only is high risk - can write malicious files
                     access_padded = "WRITE".ljust(12)
-                    access_str = c(access_padded, Colors.GREEN)
+                    access_str = c(access_padded, Colors.RED)
                 else:
+                    # READ-only is lower risk but still interesting
                     access_padded = "READ".ljust(12)
                     access_str = c(access_padded, Colors.GREEN)
 
@@ -343,36 +347,50 @@ def enum_shares(args, cache):
                 and name.upper() not in ("IPC$", "PRINT$")
                 and (not stype or "IPC" not in stype.upper())
             ]
+
+            # Cache readable shares for spider module
+            cache.readable_shares = file_shares
+
             if file_shares:
                 share_list = ", ".join(file_shares[:3])
                 if len(file_shares) > 3:
                     share_list += f" (+{len(file_shares) - 3} more)"
-                # Enumerate shares (JSON metadata)
+                # Enumerate and download files from shares
                 # MAX_FILE_SIZE=10485760 (10MB) - default 50KB is too small
+                # DOWNLOAD_FLAG=True enables file download (default is JSON listing only)
                 spider_cmd = (
-                    f"nxc smb {args.target} -u <user> -p <pass> "
-                    "-M spider_plus -o OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760"
+                    f"nxc smb {target} -u <user> -p <pass> "
+                    "-M spider_plus -o OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760 DOWNLOAD_FLAG=True"
                 )
                 cache.add_next_step(
                     finding=f"Readable shares: {share_list}",
                     command=spider_cmd,
-                    description="Enumerate share contents (creates JSON metadata)",
+                    description="Spider and download files from shares (outputs to OUTPUT_FOLDER)",
                     priority="low",
                 )
-                # Download files from shares
-                download_cmd = (
-                    f"nxc smb {args.target} -u <user> -p <pass> "
-                    "-M spider_plus -o DOWNLOAD_FLAG=True OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760"
-                )
+
+                # Add smbclient command for manual browsing
+                first_share = file_shares[0]
+                if args.user:
+                    smbclient_cmd = (
+                        f"smbclient //{target}/{first_share} "
+                        f"-U '{args.user}%<password>'"
+                    )
+                else:
+                    smbclient_cmd = f"smbclient //{target}/{first_share} -U '<user>%<password>'"
                 cache.add_next_step(
-                    finding=f"Readable shares: {share_list}",
-                    command=download_cmd,
-                    description="Download files from shares (up to 10MB each)",
+                    finding=f"Readable share: {first_share}",
+                    command=smbclient_cmd,
+                    description="Browse share manually with smbclient",
                     priority="low",
                 )
 
         # Store share names for aggregated copy-paste section
         cache.copy_paste_data["share_names"].update(s[0] for s in shares)
+        # Store UNC paths for multi-target aggregation (includes target IP)
+        cache.copy_paste_data["share_unc_paths"].update(
+            f"\\\\{target}\\{s[0]}" for s in shares
+        )
     else:
         # No shares parsed - check for access denied or other errors
         combined = stdout + stderr

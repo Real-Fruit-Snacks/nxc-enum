@@ -3,7 +3,7 @@
 import re
 
 from ..core.colors import Colors, c
-from ..core.constants import HIGH_BADPWD_THRESHOLD, RE_RID_USER
+from ..core.constants import HIGH_BADPWD_THRESHOLD, RE_RID_USER, RE_RID_USER_WITH_DOMAIN
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.classify import classify_users, safe_int
@@ -123,13 +123,14 @@ def parse_info_lines(stdout: str, users: dict) -> dict:
 
 def enum_users(args, cache):
     """Enumerate domain users."""
-    print_section("Users via RPC", args.target)
+    target = cache.target if cache else args.target
+    print_section("Users via RPC", target)
 
     auth = cache.auth_args
 
     # First try --users for basic enumeration
     status("Enumerating users via 'querydispinfo'")
-    users_args = ["smb", args.target] + auth + ["--users"]
+    users_args = ["smb", target] + auth + ["--users"]
     rc, stdout, stderr = run_nxc(users_args, args.timeout)
     debug_nxc(users_args, stdout, stderr, "Users (querydispinfo)")
 
@@ -178,17 +179,43 @@ def enum_users(args, cache):
 
     # Use cached RID brute results
     status("Enumerating users via 'enumdomusers'")
-    rc2, stdout2, stderr2 = cache.get_rid_brute(args.target, auth)
+    rc2, stdout2, stderr2 = cache.get_rid_brute(target, auth)
 
-    # Parse RID output using pre-compiled regex
+    # Get hostname for local vs domain user detection
+    hostname = cache.domain_info.get("hostname", "").upper() if cache.domain_info else ""
+
+    # Track which users are local vs domain
+    local_users = set()
+    domain_users = set()
+
+    # Parse RID output - first try regex that captures domain prefix
     for line in stdout2.split("\n"):
-        rid_match = RE_RID_USER.search(line)
-        if rid_match:
-            rid = rid_match.group(1)
-            username = rid_match.group(2)
+        rid_match_with_domain = RE_RID_USER_WITH_DOMAIN.search(line)
+        if rid_match_with_domain:
+            rid = rid_match_with_domain.group(1)
+            prefix = rid_match_with_domain.group(2).upper()
+            username = rid_match_with_domain.group(3)
+
             if username not in users:
                 users[username] = {"name": "(null)", "description": "(null)"}
             users[username]["rid"] = rid
+
+            # Classify as local or domain based on prefix
+            if prefix == hostname:
+                local_users.add(username.lower())
+            else:
+                domain_users.add(username.lower())
+        else:
+            # Fall back to original regex for lines without domain prefix
+            rid_match = RE_RID_USER.search(line)
+            if rid_match:
+                rid = rid_match.group(1)
+                username = rid_match.group(2)
+                if username not in users:
+                    users[username] = {"name": "(null)", "description": "(null)"}
+                users[username]["rid"] = rid
+                # Default to domain user if no prefix to parse
+                domain_users.add(username.lower())
 
     # Parse verbose INFO lines for additional user attributes
     notable_accounts = parse_info_lines(stdout, users)
@@ -247,7 +274,7 @@ def enum_users(args, cache):
                 output(f"{'RID':<6}  {'Username':<22}  {'Description'}")
                 output(f"{'-'*6}  {'-'*22}  {'-'*40}")
             for username, info in user_list:
-                rid = info.get("rid", "???")
+                rid = info.get("rid", "-")
                 desc = info.get("description", "(null)")
                 pwdlast = info.get("pwdlast", "")
                 if desc == "(null)":
@@ -278,13 +305,24 @@ def enum_users(args, cache):
         print_user_table("Built-in Accounts", categories["builtin"])
         print_user_table("Service Accounts", categories["service"], Colors.YELLOW)
         print_user_table("Computer Accounts", categories["computer"])
-        print_user_table("Domain Users", categories["domain"])
+        print_user_table("Standard Users", categories["domain"])
 
         # Print notable account status from verbose output
         _print_notable_accounts(notable_accounts, users)
 
-        # Store usernames for aggregated copy-paste section
-        cache.copy_paste_data["usernames"].update(users.keys())
+        # Store usernames for aggregated copy-paste section (lowercase for deduplication)
+        cache.copy_paste_data["usernames"].update(u.lower() for u in users.keys())
+
+        # Any user from querydispinfo who isn't classified as local should be domain
+        # This catches users like the authenticated user who appear in --users output
+        # but may not appear in RID brute output with a parseable domain prefix
+        all_usernames_lower = {u.lower() for u in users.keys()}
+        unclassified = all_usernames_lower - domain_users - local_users
+        domain_users.update(unclassified)
+
+        # Store domain vs local users separately for correct formatting
+        cache.copy_paste_data["domain_usernames"].update(domain_users)
+        cache.copy_paste_data["local_usernames"].update(local_users)
 
         if args.json_output:
             sorted_users = sorted(users.items(), key=lambda x: safe_int(x[1].get("rid", "9999")))

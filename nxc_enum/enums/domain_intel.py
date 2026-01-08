@@ -250,7 +250,8 @@ def parse_verbose_domain_output(stdout: str) -> dict:
 
 def enum_domain_intelligence(args, cache, listener_results: dict):
     """Consolidated domain information from LDAP, SMB, and RPC sources."""
-    print_section("Domain Intelligence", args.target)
+    target = cache.target if cache else args.target
+    print_section("Domain Intelligence", target)
 
     auth = cache.auth_args
     domain_info = {
@@ -282,7 +283,7 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
         status("Gathering from LDAP...")
 
         # Get domain SID via LDAP
-        ldap_sid_args = ["ldap", args.target] + auth + ["--get-sid"]
+        ldap_sid_args = ["ldap", target] + auth + ["--get-sid"]
         rc, stdout, stderr = run_nxc(ldap_sid_args, args.timeout)
         debug_nxc(ldap_sid_args, stdout, stderr, "LDAP Get-SID")
         for line in stdout.split("\n"):
@@ -292,7 +293,7 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
                 break
 
         # Check if it's a DC
-        rc2, stdout2, stderr2 = cache.get_ldap_basic(args.target, auth)
+        rc2, stdout2, stderr2 = cache.get_ldap_basic(target, auth)
         for line in stdout2.split("\n"):
             if "DC" in line or "Domain Controller" in line:
                 domain_info["is_dc"] = True
@@ -328,7 +329,7 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
 
     # --- Collect from SMB ---
     status("Gathering from SMB...")
-    rc, stdout, stderr = cache.get_smb_basic(args.target, auth)
+    rc, stdout, stderr = cache.get_smb_basic(target, auth)
     if stdout:
         _name_match = RE_NAME.search(stdout)  # noqa: F841 - parsed but hostname used instead
         domain_match = RE_DOMAIN.search(stdout)
@@ -351,7 +352,7 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
 
     # --- Collect from RPC (RID brute) ---
     status("Gathering from RPC...")
-    rc, stdout, stderr = cache.get_rid_brute(args.target, auth)
+    rc, stdout, stderr = cache.get_rid_brute(target, auth)
     for line in stdout.split("\n"):
         if not domain_info["domain_sid"]:
             sid_match = RE_DOMAIN_SID_FULL.search(line)
@@ -372,6 +373,14 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
         domain_info["netbios_domain"] = dns_domain.split(".")[0].upper()
     if domain_info["hostname"] and dns_domain:
         domain_info["fqdn"] = f"{domain_info['hostname']}.{dns_domain}"
+
+    # Validate: if domain_name equals hostname, it's likely the machine name not domain name
+    # This happens on member servers where RID brute returns MS01\Administrator
+    hostname = domain_info.get("hostname", "").upper()
+    if domain_info["domain_name"] and domain_info["domain_name"].upper() == hostname:
+        # Clear misleading domain_name - it's just the machine name
+        domain_info["domain_name"] = ""
+        domain_info["netbios_domain"] = ""
 
     # --- Display consolidated results ---
     output("")

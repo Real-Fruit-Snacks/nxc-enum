@@ -65,10 +65,17 @@ def print_executive_summary_multi(args, cache, creds, results):
             msg = f"[!] Min Password Length: {c(f'{min_pw_len} chars', Colors.RED)}"
             msg += f" {c('(weak)', Colors.RED)}"
             output(msg)
-        else:
+        elif min_pw_int is not None:
             output(f"[+] Min Password Length: {c(f'{min_pw_len} chars', Colors.GREEN)}")
+        else:
+            # Unknown - don't append " chars"
+            output(f"[*] Min Password Length: {c('Unknown', Colors.YELLOW)}")
     except (ValueError, TypeError):
-        output(f"[*] Min Password Length: {min_pw_len} chars")
+        # Non-numeric value - don't append " chars" if it's "Unknown"
+        if min_pw_len == "Unknown":
+            output(f"[*] Min Password Length: {c('Unknown', Colors.YELLOW)}")
+        else:
+            output(f"[*] Min Password Length: {min_pw_len}")
 
     lockout = policy_info.get("Lockout threshold", "Unknown")
     if lockout in ("None", "0", 0, None):

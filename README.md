@@ -6,7 +6,7 @@
 
 **NetExec wrapper for comprehensive Active Directory enumeration with enum4linux-ng style output.**
 
-> Combines 30+ enumeration modules across SMB, LDAP, MSSQL, RDP, FTP, and NFS into a single tool with colored output, intelligent credential handling, multi-target scanning, and actionable recommendations.
+> Combines 35+ enumeration modules across SMB, LDAP, MSSQL, RDP, FTP, and NFS into a single tool with colored output, intelligent credential handling, multi-target scanning, and actionable recommendations.
 
 ## Why nxc-enum?
 
@@ -35,6 +35,9 @@ nxc-enum 10.0.0.1 -C creds.txt -d CORP
 nxc-enum 10.0.0.0/24 -u admin -p 'Password123'    # CIDR notation
 nxc-enum 10.0.0.1-50 -u admin -p 'Password123'    # IP range
 nxc-enum targets.txt -u admin -p 'Password123'    # Target file (auto-detected)
+
+# Discover live SMB hosts only (no creds required)
+nxc-enum 10.0.0.0/24 --discover-only
 
 # Specific modules only
 nxc-enum 10.0.0.1 -u admin -p pass --shares --users --laps --mssql
@@ -73,7 +76,7 @@ sudo ln -s $(pwd)/nxc_enum.py /usr/local/bin/nxc-enum
 ### Core Capabilities
 
 - **enum4linux-ng style output** - Colored `[*]`, `[+]`, `[-]` indicators with organized sections
-- **30+ enumeration modules** - Users, groups, shares, LAPS, Kerberoastable, delegation, ADCS, MSSQL, and more
+- **35+ enumeration modules** - Users, groups, shares, LAPS, Kerberoastable, delegation, ADCS, MSSQL, gMSA, PSO, SCCM, and more
 - **Multi-protocol support** - SMB, LDAP, MSSQL, RDP, FTP, NFS enumeration
 - **Smart credential handling** - Auto-detects NTLM hashes, supports pass-the-hash
 - **Local admin detection** - Automatically identifies Pwn3d! accounts
@@ -97,6 +100,7 @@ nxc-enum targets.txt -u admin -p pass        # Target file (auto-detected!)
 4. Otherwise → Hostname/IP
 
 **Multi-target output includes:**
+- Discovered hosts display with hostnames before enumeration starts
 - Per-target results with clear separation
 - Aggregate summary across all targets
 - Combined security findings (signing disabled, anonymous access, etc.)
@@ -163,27 +167,38 @@ HIGH PRIORITY (3)
 
 ## Usage Guide
 
-### Hosts Resolution Check (Pre-Flight)
+### SMB Reachability & Hosts Resolution Check (Pre-Flight)
 
-**Before any enumeration begins**, nxc-enum verifies that the DC hostname resolves correctly:
+**Before any enumeration begins**, nxc-enum performs two pre-flight checks:
+
+1. **SMB Reachability** - Validates the target responds to SMB (port 445)
+2. **Hosts Resolution** - Verifies the DC hostname resolves to the target IP
 
 ```
-[*] Verifying DC hostname resolution...
-[+] DC hostname 'DC01.corp.local' resolves correctly
+[*] Checking SMB reachability...
+[+] Target hostname 'DC01.corp.local' resolves correctly
 ```
 
-If resolution fails:
+If the target doesn't respond to SMB:
 ```
-[*] Verifying DC hostname resolution...
-[-] DC hostname does not resolve to target IP
+[*] Checking SMB reachability...
+[!] Host not responding to SMB - skipping
+```
+
+If hostname resolution fails:
+```
+[*] Checking SMB reachability...
+[-] Target hostname does not resolve to target IP
     Add to /etc/hosts: 10.0.24.230  DC01.corp.local  CORP  DC01
 
 [*] Use --skip-hosts-check to bypass this check (not recommended)
 ```
 
-**Why this matters:** Kerberos authentication requires the DC hostname to resolve correctly. Without proper resolution, authentication may fail or use NTLM fallback.
+**Why SMB instead of ping?** ICMP ping is commonly blocked by firewalls, causing false negatives. SMB-based validation confirms the target is actually running Windows SMB services, which is more appropriate for an AD enumeration tool.
 
-**To fix:** Add the suggested line to `/etc/hosts`, or use `--skip-hosts-check` to bypass (not recommended).
+**Why hosts resolution matters:** Kerberos authentication requires the DC hostname to resolve correctly. Without proper resolution, authentication may fail or use NTLM fallback.
+
+**To fix resolution issues:** Add the suggested line to `/etc/hosts`, or use `--skip-hosts-check` to bypass (not recommended).
 
 ### Anonymous Enumeration
 
@@ -297,6 +312,10 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `--users` | Domain users via RPC |
 | `--groups` | Domain groups with members |
 | `--shares` | SMB shares and permissions |
+| `--spider` | Spider shares for files (metadata only) |
+| `--spider-download` | Enable file download during spidering |
+| `--spider-max-size` | Max file size to download (default: 10MB) |
+| `--spider-output` | Output directory for downloaded files |
 | `--policies` | Password and lockout policies |
 | `--sessions` | Active sessions `[admin]` |
 | `--loggedon` | Logged on users `[admin]` |
@@ -311,12 +330,15 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | Flag | Description |
 |------|-------------|
 | `--laps` | LAPS deployment check |
+| `--laps-computer` | Filter LAPS to computer names matching pattern |
 | `--ldap-signing` | LDAP signing requirements |
 | `--pre2k` | Pre-Windows 2000 computers |
 | `--bitlocker` | BitLocker status `[admin]` |
 | `--delegation` | Delegation misconfigurations |
 | `--asreproast` | AS-REP roastable accounts |
 | `--adcs` | ADCS certificate templates |
+| `--adcs-server` | Target specific ADCS server |
+| `--adcs-base-dn` | Custom base DN for ADCS search |
 | `--dc-list` | Domain controllers and trusts |
 | `--pwd-not-reqd` | Accounts with PASSWD_NOTREQD |
 | `--admin-count` | Accounts with adminCount=1 |
@@ -324,15 +346,15 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `--descriptions` | User description fields |
 | `--signing` | SMB signing requirements |
 | `--webdav` | WebClient service status |
-| `--dns` | DNS records |
+| `--dns` | DNS enumeration recommendations (passive) |
 
 ### Other Protocols
 
 | Flag | Description |
 |------|-------------|
-| `--mssql` | MSSQL databases and linked servers |
+| `--mssql` | MSSQL detection and auth test (recommends queries) |
 | `--rdp` | RDP status and NLA check |
-| `--ftp` | FTP anonymous access |
+| `--ftp` | FTP access (anonymous + credential testing) |
 | `--nfs` | NFS share exports |
 
 ### Output
@@ -351,9 +373,17 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `-t, --timeout` | Command timeout in seconds (default: 30) |
 | `--no-validate` | Skip credential validation |
 | `--skip-hosts-check` | Skip /etc/hosts resolution check (see below) |
+| `--no-prescan` | Disable parallel host pre-scanning (slower for large target sets) |
+| `--discover-only` | Only discover live SMB hosts, skip enumeration (no creds required) |
+| `--validate-only` | Only validate credentials, skip enumeration (fast cred check) |
+| `--proxy-mode` | Enable proxy mode for proxychains/SOCKS (see below) |
 | `--debug` | Show raw nxc command output |
 
 **Note on Hosts Resolution Check:** Before any enumeration begins, nxc-enum verifies that the DC hostname resolves to the target IP. If resolution fails, the tool exits with an error and provides the required `/etc/hosts` entry. Use `--skip-hosts-check` to bypass (not recommended - may cause authentication issues).
+
+**Note on Proxy Mode:** When running through proxychains or a SOCKS proxy, use `--proxy-mode` to reduce concurrency and increase timeouts. This prevents overwhelming the proxy and avoids false negatives from timeout failures. See "Proxy Mode" section below for details.
+
+**Note on Validate-Only Mode:** Use `--validate-only` for fast credential testing without running enumeration. This is ideal when you discover new credentials and want to quickly test them. Shows admin status (Pwn3d!) for each valid credential.
 
 ---
 
@@ -401,6 +431,40 @@ Legend: WRITE (green) | READ (yellow) | - = No Access
 [!] Non-default share 'Backups$' accessible by: admin (RW), svc_backup (RW), faraday (R)
 ```
 
+### Discovery-Only Mode
+
+```bash
+nxc-enum 10.0.0.0/24 --discover-only
+```
+
+```
+[*] Pre-scanning 256 targets for SMB (port 445)...
+[*] Port scan: 256/256 hosts checked
+[*] Filtered 246 hosts (port 445 closed/filtered)
+[*] Validating SMB on 10 live hosts...
+[*] SMB validation: 10/10 complete
+
+======================================================================
+  DISCOVERY RESULTS
+======================================================================
+
+[*] Hosts scanned: 256
+[*] Port 445 open: 10
+[+] SMB validated: 10
+[*] Elapsed time: 8.52s
+
+----------------------------------------------------------------------
+IP               Hostname        Domain               Sign  v1
+----------------------------------------------------------------------
+10.0.0.1         DC01            corp.local           Yes   No
+10.0.0.5         FS01            corp.local           No    No
+10.0.0.10        WS001           corp.local           No    Yes
+10.0.0.15        WS002           corp.local           No    No
+----------------------------------------------------------------------
+
+Legend: Sign=SMB Signing Required, v1=SMBv1 Enabled
+```
+
 ### Multi-Target Summary
 
 ```
@@ -410,8 +474,8 @@ Legend: WRITE (green) | READ (yellow) | - = No Access
 
 TARGET STATUS
 --------------------------------------------------
-  [+] 10.0.0.1 - Completed (15.2s)
-  [+] 10.0.0.2 - Completed (12.8s)
+  [+] 10.0.0.1 (DC01) - Completed (15.2s)
+  [+] 10.0.0.2 (FS01) - Completed (12.8s)
   [-] 10.0.0.3 - Failed: Connection refused
 
 AGGREGATE FINDINGS
@@ -432,28 +496,31 @@ STATISTICS
   Total Scan Time: 28.00s
 ```
 
-### MSSQL Enumeration
+### MSSQL Detection
 
 ```
-MSSQL SERVER INFO
+MSSQL SERVICE DETECTED
 --------------------------------------------------
-  Version: SQL Server 2019
-  [!] Current user has SYSADMIN privileges!
+  Hostname: SQL01
+  Authenticated: Yes
+  Privileges: SYSADMIN
 
-DATABASES (5)
---------------------------------------------------
-  [*] master (system)
-  [*] tempdb (system)
-  [*] msdb (system)
-  [+] HRDatabase (user)
-  [+] AppData (user)
+[!] Current user has SYSADMIN privileges!
 
-LINKED SERVERS (2)
+RECOMMENDED ENUMERATION COMMANDS:
 --------------------------------------------------
-  [!] SQL02.corp.local
-  [!] REPORTING
-  [*] Linked servers may allow lateral movement
+
+[*] List databases:
+    nxc mssql 10.0.0.1 -u 'admin' -p '<password>' -q 'SELECT name FROM master.dbo.sysdatabases'
+
+[*] List linked servers (lateral movement):
+    nxc mssql 10.0.0.1 -u 'admin' -p '<password>' -q 'SELECT name FROM sys.servers WHERE is_linked=1'
+
+[*] Check impersonation privileges:
+    nxc mssql 10.0.0.1 -u 'admin' -p '<password>' -M mssql_priv
 ```
+
+*Note: nxc-enum only tests authentication - SQL queries are recommendations for manual execution.*
 
 ---
 
@@ -464,6 +531,7 @@ When run without specific flags, all modules are executed:
 | Module | Description |
 |--------|-------------|
 | **Pre-Flight** | |
+| SMB Reachability | Validates target responds to SMB (skips unreachable hosts) |
 | Hosts Resolution | Verifies DC hostname resolves to target IP (hard stop if fails) |
 | **Core** | |
 | Anonymous Probe | Null/guest/LDAP anonymous access |
@@ -480,8 +548,11 @@ When run without specific flags, all modules are executed:
 | Computers | Computer list with OS summary, outdated detection |
 | **Resources** | |
 | Shares | Permissions (matrix in multi-cred mode) |
+| Spider | Recursive file listing on shares (metadata or download) |
 | Printers | Print spooler status (PrintNightmare warning) |
 | AD Subnets | AD sites and network topology |
+| Network Interfaces | Multi-homed host detection via SMB IOCTL |
+| Disks | Disk drive enumeration via RPC `[admin]` |
 | **Security** | |
 | Policies | Password and lockout policies |
 | Sessions | Active Windows sessions `[admin]` |
@@ -498,15 +569,82 @@ When run without specific flags, all modules are executed:
 | DC List | Domain controllers and trusts |
 | AdminCount | Accounts with adminCount=1 |
 | PASSWD_NOTREQD | Accounts without password requirement |
+| gMSA | Group Managed Service Account enumeration |
+| GPP Password | Group Policy Preferences cpassword extraction (MS14-025) |
+| PSO | Fine-Grained Password Policies (Password Settings Objects) |
+| SCCM | SCCM/MECM infrastructure discovery |
+| MAQ | Machine Account Quota check |
+| WebDAV | WebClient service status check |
+| DNS | DNS enumeration recommendations |
 | **Other Protocols** | |
-| MSSQL | Databases, linked servers, sysadmin check |
+| MSSQL | Service detection, auth test, recommends queries |
 | RDP | RDP status and NLA requirements |
-| FTP | Anonymous FTP access |
+| FTP | Anonymous access + credential testing |
 | NFS | NFS exports and permissions |
+| VNC | VNC service detection (ports 5900-5903, 5800-5801) |
+| iOXID | Multi-homed host discovery via DCOM (port 135) |
 | **Reporting** | |
 | Executive Summary | Security posture and attack vectors |
 | Next Steps | Actionable follow-up commands |
 | Copy-Paste Lists | Clean output for other tools |
+
+---
+
+## Proxy Mode (Proxychains/SOCKS)
+
+When running through proxychains or a SOCKS proxy:
+
+```bash
+# Explicit proxy mode
+proxychains nxc-enum 10.0.0.1 -u admin -p pass --proxy-mode
+
+# Auto-detected (proxychains sets LD_PRELOAD)
+proxychains nxc-enum 10.0.0.1 -u admin -p pass
+```
+
+**What changes in proxy mode:**
+
+| Setting | Normal | Proxy Mode |
+|---------|--------|------------|
+| Parallel module workers | 15 | 2 |
+| Port prescan workers | 100 | 5 |
+| SMB validation workers | 20 | 2 |
+| Port prescan timeout | 0.5s | 5.0s |
+| Default command timeout | 30s | 120s |
+| iOXID module | Enabled | Skipped |
+| VNC module | Enabled | Skipped |
+| Hostname validation | Enabled | Skipped |
+
+**Why these changes?**
+- **Reduced workers**: SOCKS proxies typically support 10-20 concurrent connections max
+- **Increased timeouts**: Proxy routing adds latency; fast timeouts cause false negatives
+- **Skipped modules**: iOXID and VNC use raw sockets incompatible with proxychains
+- **Skipped hostname validation**: DNS queries bypass the proxy
+
+**Important:** Use IP addresses instead of hostnames. DNS resolution happens locally and bypasses the proxy.
+
+---
+
+## Passive Enumeration Philosophy
+
+**nxc-enum is designed for pure reconnaissance - it never executes commands on targets.**
+
+| Allowed Operations | Prohibited Operations |
+|-------------------|----------------------|
+| LDAP queries (read attributes) | SQL queries on databases |
+| SMB share enumeration | WMI queries (execute on target) |
+| RPC user/group enumeration | Kerberos ticket requests |
+| Port/service detection | xp_cmdshell or command execution |
+| Authentication testing | File modification |
+
+**Examples of passive vs. active:**
+
+- **MSSQL**: Tests authentication only, recommends `SELECT` queries for you to run manually
+- **DNS**: Checks LDAP/DNS availability, recommends `adidnsdump` commands to run manually
+- **Kerberoast/AS-REP**: LDAP queries for SPNs/UAC flags only, recommends ticket extraction commands
+- **Shares**: Lists permissions, recommends `spider_plus` commands to run manually
+
+This design ensures nxc-enum is safe for authorized assessments where you need read-only reconnaissance before deciding on further actions.
 
 ---
 
@@ -540,13 +678,36 @@ history -c
 
 nxc-enum uses a multi-phase parallel execution architecture:
 
+### Multi-Target Host Discovery (New!)
+
+For large target sets (CIDR ranges, IP ranges), nxc-enum performs parallel host discovery:
+
+| Phase | Description | Workers | Timeout |
+|-------|-------------|---------|---------|
+| 1. TCP Port Scan | Fast filter for port 445 | 100 | 0.5s |
+| 2. SMB Validation | Extract hostname/domain | 20 | 10s |
+
+**Performance comparison for /24 network (256 hosts):**
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| 10 live hosts | ~41 min | ~15 sec |
+| 50 live hosts | ~41 min | ~30 sec |
+| All offline | ~42 min | ~5 sec |
+
+Auto-enabled when targets > 5. Use `--no-prescan` to disable.
+
+**Quick network mapping:** Use `--discover-only` to find live SMB hosts without running enumeration. Outputs IP, hostname, domain, SMB signing status, and SMBv1 for each host. Supports JSON output for integration with other tools.
+
+### Per-Target Parallelism
+
 - **Parallel Port Scanning** - All ports checked simultaneously
 - **Parallel Cache Priming** - SMB, RID brute, LDAP run in parallel
 - **Parallel Credential Validation** - Up to 10 concurrent workers
 - **Parallel Module Execution** - Independent modules run simultaneously
 - **Result Caching** - No redundant network calls
 
-Result: **~50% faster** than sequential execution.
+Result: **~50% faster** than sequential execution per target.
 
 ---
 
@@ -573,9 +734,17 @@ Result: **~50% faster** than sequential execution.
 | ADCS Enumeration | ✗ | ✓ |
 | MSSQL Enumeration | ✗ | ✓ |
 | RDP/NLA Check | ✗ | ✓ |
-| FTP Anonymous Check | ✗ | ✓ |
+| FTP Enumeration | ✗ | ✓ |
 | NFS Export Enumeration | ✗ | ✓ |
+| VNC Detection | ✗ | ✓ |
+| iOXID Network Discovery | ✗ | ✓ |
+| gMSA Enumeration | ✗ | ✓ |
+| GPP Password Extraction | ✗ | ✓ |
+| PSO (Fine-Grained Policies) | ✗ | ✓ |
+| SCCM Discovery | ✗ | ✓ |
+| Share Spidering | ✗ | ✓ |
 | Outdated OS Detection | ✗ | ✓ |
+| Proxy Mode (Proxychains) | ✗ | ✓ |
 | Next Steps Recommendations | ✗ | ✓ |
 | Result Caching | ✗ | ✓ |
 | Copy-Paste Lists | ✗ | ✓ |

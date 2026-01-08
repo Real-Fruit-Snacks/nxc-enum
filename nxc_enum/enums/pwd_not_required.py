@@ -204,12 +204,77 @@ def parse_verbose_info(stdout: str) -> dict:
 
 def enum_pwd_not_required(args, cache):
     """Find accounts without password requirement."""
-    print_section("Password Not Required", args.target)
+    target = cache.target if cache else args.target
+    print_section("Password Not Required", target)
 
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping PASSWD_NOTREQD enumeration", "error")
+        return
+
+    # Try to use batch data first (avoids extra LDAP query if cache was primed)
+    batch_accounts = cache.get_pwd_not_required_from_batch()
+    if batch_accounts:
+        status("Using cached batch data for PASSWD_NOTREQD accounts...")
+        accounts_detailed = batch_accounts
+        accounts = [f"{a['username']} ({a['status']})" for a in batch_accounts]
+
+        # Store in cache
+        cache.pwd_not_required = accounts
+        cache.pwd_not_required_details = accounts_detailed
+
+        if accounts_detailed:
+            enabled_accounts = [a for a in accounts_detailed if not a.get("is_disabled", False)]
+            disabled_accounts = [a for a in accounts_detailed if a.get("is_disabled", False)]
+
+            count = len(accounts_detailed)
+            status(f"Found {count} account(s) with PASSWD_NOTREQD flag:", "warning")
+            output("")
+
+            if enabled_accounts:
+                output(c("  Enabled Accounts (HIGH RISK):", Colors.RED))
+                for account in enabled_accounts:
+                    output(f"    {c(account['username'], Colors.RED)}")
+                output("")
+
+            if disabled_accounts:
+                output(c("  Disabled Accounts:", Colors.YELLOW))
+                for account in disabled_accounts:
+                    output(f"    {c(account['username'], Colors.YELLOW)} (disabled)")
+                output("")
+
+            if enabled_accounts:
+                enabled_names = [a["username"] for a in enabled_accounts[:3]]
+                names_str = ', '.join(enabled_names)
+                cache.add_next_step(
+                    finding=f"PASSWD_NOTREQD accounts: {names_str}",
+                    command=f"nxc smb {target} -u '{enabled_names[0]}' -p ''",
+                    description="Try empty password for PASSWD_NOTREQD accounts",
+                    priority="high",
+                )
+
+            cache.copy_paste_data["pwd_not_required"].update(
+                a["username"].lower() for a in accounts_detailed
+            )
+        else:
+            status("No accounts with PASSWD_NOTREQD flag found", "success")
+
+        if args.json_output:
+            JSON_DATA["password_not_required"] = {
+                "accounts": accounts_detailed,
+                "summary": {
+                    "total": len(accounts_detailed),
+                    "enabled": len([a for a in accounts_detailed if not a.get("is_disabled")]),
+                    "disabled": len([a for a in accounts_detailed if a.get("is_disabled")]),
+                },
+            }
+        return
+
+    # Fall back to LDAP query if batch data unavailable
     auth = cache.auth_args
     status("Querying accounts with PASSWD_NOTREQD flag...")
 
-    pwd_args = ["ldap", args.target] + auth + ["--password-not-required"]
+    pwd_args = ["ldap", target] + auth + ["--password-not-required"]
     rc, stdout, stderr = run_nxc(pwd_args, args.timeout)
     debug_nxc(pwd_args, stdout, stderr, "Password Not Required")
 
@@ -333,7 +398,7 @@ def enum_pwd_not_required(args, cache):
 
             cache.add_next_step(
                 finding=f"PASSWD_NOTREQD accounts: {names_str}",
-                command=f"nxc smb {args.target} -u '{enabled_names[0]}' -p ''",
+                command=f"nxc smb {target} -u '{enabled_names[0]}' -p ''",
                 description="Try empty password authentication for accounts with PASSWD_NOTREQD",
                 priority="high",
             )
@@ -350,12 +415,22 @@ def enum_pwd_not_required(args, cache):
                 for flag in sorted(notable_flags):
                     output(f"    - {flag}")
 
-        # Store for aggregated copy-paste section
+        # Store for aggregated copy-paste section (lowercase for deduplication)
         cache.copy_paste_data["pwd_not_required"].update(
-            account["username"] for account in accounts_detailed
+            account["username"].lower() for account in accounts_detailed
         )
     else:
-        status("No accounts with PASSWD_NOTREQD flag found", "success")
+        # Check if LDAP actually failed before claiming "no accounts found"
+        combined = (stdout + stderr).lower()
+        ldap_failure_indicators = [
+            "failed to connect", "connection refused", "timed out",
+            "ldap ping failed", "status_logon_failure", "status_access_denied",
+            "failed to create connection", "kerberos sessionerror",
+        ]
+        if any(ind in combined for ind in ldap_failure_indicators) or rc != 0:
+            status("LDAP unavailable - cannot check PASSWD_NOTREQD accounts", "error")
+        else:
+            status("No accounts with PASSWD_NOTREQD flag found", "success")
 
     if args.json_output:
         JSON_DATA["password_not_required"] = {

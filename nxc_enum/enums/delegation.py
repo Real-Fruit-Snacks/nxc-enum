@@ -150,12 +150,18 @@ def _parse_verbose_info(lines: list) -> dict:
 
 def enum_delegation(args, cache):
     """Find accounts with delegation misconfigurations."""
-    print_section("Delegation Enumeration", args.target)
+    target = cache.target if cache else args.target
+    print_section("Delegation Enumeration", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping delegation enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Querying delegation configurations...")
 
-    delegation_args = ["ldap", args.target] + auth + ["--find-delegation"]
+    delegation_args = ["ldap", target] + auth + ["--find-delegation"]
     rc, stdout, stderr = run_nxc(delegation_args, args.timeout)
     debug_nxc(delegation_args, stdout, stderr, "Find Delegation")
 
@@ -270,8 +276,9 @@ def enum_delegation(args, cache):
                 if target_acct.get("target_services")
                 else "<target_spn>"
             )
+            # Format: getST.py -spn 'SPN' -impersonate USER 'domain/user:pass'
             cmd = f"getST.py -spn '{target_spn}' -impersonate Administrator"
-            cmd += f" '{domain}/{target_acct['account']}:<pass>'"
+            cmd += f" '{domain}/{target_acct['account']}:<pass>' -dc-ip {target}"
             cache.add_next_step(
                 finding=f"Constrained delegation on {target_acct['account']}",
                 command=cmd,
@@ -282,8 +289,9 @@ def enum_delegation(args, cache):
         if rbcd:
             domain = cache.domain_info.get("dns_domain", "<domain>")
             target_acct = rbcd[0]
+            # Format: getST.py -spn 'SPN' -impersonate USER 'domain/user:pass'
             cmd = f"getST.py -spn 'cifs/{target_acct['account']}'"
-            cmd += f" -impersonate Administrator '{domain}/<attacker_account>:<pass>'"
+            cmd += f" -impersonate Administrator '<domain>/<user>:<pass>' -dc-ip {target}"
             cache.add_next_step(
                 finding=f"RBCD on {target_acct['account']}",
                 command=cmd,
@@ -297,7 +305,17 @@ def enum_delegation(args, cache):
             if d.get("target_services"):
                 cache.copy_paste_data["target_services"].update(d["target_services"])
     else:
-        status("No delegation configurations found", "success")
+        # Check if LDAP actually failed before claiming "no configurations found"
+        combined = (stdout + stderr).lower()
+        ldap_failure_indicators = [
+            "failed to connect", "connection refused", "timed out",
+            "ldap ping failed", "status_logon_failure", "status_access_denied",
+            "failed to create connection", "kerberos sessionerror",
+        ]
+        if any(ind in combined for ind in ldap_failure_indicators) or rc != 0:
+            status("LDAP unavailable - cannot enumerate delegation configurations", "error")
+        else:
+            status("No delegation configurations found", "success")
 
     if args.json_output:
         JSON_DATA["delegation"] = {

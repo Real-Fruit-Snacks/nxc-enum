@@ -8,12 +8,18 @@ from ..parsing.nxc_output import is_nxc_noise_line
 
 def enum_descriptions(args, cache):
     """Extract user description fields."""
-    print_section("User Descriptions", args.target)
+    target = cache.target if cache else args.target
+    print_section("User Descriptions", target)
+
+    # Skip if LDAP is unavailable (determined during cache priming)
+    if not cache.ldap_available:
+        status("LDAP unavailable - skipping user descriptions enumeration", "error")
+        return
 
     auth = cache.auth_args
     status("Querying user descriptions...")
 
-    desc_args = ["ldap", args.target] + auth + ["-M", "get-desc-users"]
+    desc_args = ["ldap", target] + auth + ["-M", "get-desc-users"]
     rc, stdout, stderr = run_nxc(desc_args, args.timeout)
     debug_nxc(desc_args, stdout, stderr, "User Descriptions")
 

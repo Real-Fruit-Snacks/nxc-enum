@@ -10,15 +10,17 @@ from ..parsing.nxc_output import is_nxc_noise_line
 
 def enum_av(args, cache, is_admin: bool = True):
     """Enumerate installed AV/EDR solutions (requires local admin)."""
-    print_section("AV/EDR Detection", args.target)
+    target = cache.target if cache else args.target
+    print_section("AV/EDR Detection", target)
 
     if not is_admin:
+        cache.av_check_skipped = True
         status("Skipping: requires local admin (current user is not admin)", "info")
         return
 
     auth = cache.auth_args
     status("Checking for installed security products")
-    av_args = ["smb", args.target] + auth + ["-M", "enum_av"]
+    av_args = ["smb", target] + auth + ["-M", "enum_av"]
     rc, stdout, stderr = run_nxc(av_args, args.timeout)
     debug_nxc(av_args, stdout, stderr, "AV/EDR Detection")
 
