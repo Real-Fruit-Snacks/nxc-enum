@@ -227,3 +227,13 @@ draft_*.md
 *.draft.md
 WIP_*.md
 *.wip.md
+
+# Claude Code project files
+CLAUDE.md
+
+# Local scripts
+sync-to-kali.sh
+*.local.sh
+
+# Test output files
+Test_app*.txt
