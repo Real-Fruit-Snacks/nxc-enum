@@ -38,14 +38,15 @@ def enum_subnets(args, cache):
     combined = stdout + stderr
 
     # Check for module errors/exceptions BEFORE parsing
+    # Only check for actual Python exceptions, not general "error" messages
     exception_indicators = [
-        "Exception",
-        "Error:",
-        "Traceback",
+        "Traceback (most recent call last)",
         "UnicodeDecodeError",
-        "AttributeError",
-        "TypeError",
-        "KeyError",
+        "AttributeError:",
+        "TypeError:",
+        "KeyError:",
+        "IndexError:",
+        "Exception:",
     ]
     if any(indicator in combined for indicator in exception_indicators):
         status("AD subnet enumeration failed (module error)", "error")

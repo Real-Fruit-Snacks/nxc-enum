@@ -102,6 +102,12 @@ def enum_adcs(args, cache):
 
     # Display results
     if enrollment_servers or ca_names:
+        status(
+            "ADCS misconfigurations (ESC1-ESC8) can allow privilege escalation to Domain Admin. "
+            "Use certipy to scan for vulnerable certificate templates.",
+            "info",
+        )
+        output("")
         if enrollment_servers:
             status(f"Found {len(enrollment_servers)} PKI Enrollment Server(s):", "info")
             for server in enrollment_servers:

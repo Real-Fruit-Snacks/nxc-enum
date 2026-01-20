@@ -30,6 +30,13 @@ def is_nxc_noise_line(line: str) -> bool:
     # Skip SMB version lines
     if "SMBv1:" in line and "signing:" in line:
         return True
+    # Skip DNS/domain resolution debug lines
+    if "Resolved domain:" in line or "resolved domain:" in line:
+        return True
+    # Skip raw SMB banner lines (Windows version with signing/SMBv1 info)
+    # Format: "Windows 10 Build 17763 x64 (name:...) (signing:...) (SMBv1:...)"
+    if "(SMBv1:" in line and "Build" in line:
+        return True
     # Skip verbose INFO lines (connection metadata, not actual data)
     # These appear with -v flag: INFO Socket info, INFO Creating SMBv3, etc.
     if line.strip().startswith("INFO ") or " INFO " in line:

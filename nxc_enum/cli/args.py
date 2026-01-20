@@ -24,7 +24,8 @@ def create_parser():
     """Create and return the argument parser."""
     parser = argparse.ArgumentParser(
         prog="nxc-enum",
-        description=textwrap.dedent("""
+        description=textwrap.dedent(
+            """
             ╔═══════════════════════════════════════════════════════════════════╗
             ║  nxc-enum - NetExec AD Enumeration with enum4linux-ng Style       ║
             ╚═══════════════════════════════════════════════════════════════════╝
@@ -40,9 +41,11 @@ def create_parser():
               • Local admin detection and admin-aware command execution
               • Actionable "Next Steps" recommendations based on findings
               • Pure enumeration only (no command execution on targets)
-        """),
+        """
+        ),
         formatter_class=CustomHelpFormatter,
-        epilog=textwrap.dedent("""
+        epilog=textwrap.dedent(
+            """
             ─────────────────────────────────────────────────────────────────────
             Examples:
 
@@ -88,7 +91,8 @@ def create_parser():
                 admin           Password123
                 svc_backup      Summer2024!
             ─────────────────────────────────────────────────────────────────────
-        """),
+        """
+        ),
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -226,13 +230,13 @@ def create_parser():
         "-U",
         "--userfile",
         metavar="FILE",
-        help="Usernames file (one per line). Use with -P for 1:1 pairing, or -p to spray single password",
+        help="Usernames file (one per line). Use with -P for 1:1 pairing",
     )
     multi_group.add_argument(
         "-P",
         "--passfile",
         metavar="FILE",
-        help="Passwords file (one per line). Use with -U for 1:1 pairing, or -u to try all against single user",
+        help="Passwords file (one per line). Use with -U for 1:1 pairing",
     )
     multi_group.add_argument(
         "--continue-on-success",
@@ -431,7 +435,7 @@ def create_parser():
     security_group.add_argument(
         "--no-preauth-targets",
         metavar="FILE",
-        help="Target accounts file for kerberoasting via AS-REP roastable user (no password needed)",
+        help="Target accounts file for kerberoasting via AS-REP roastable user",
     )
     security_group.add_argument(
         "--adcs",

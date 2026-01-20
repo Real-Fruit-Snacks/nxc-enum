@@ -426,14 +426,14 @@ class TestCustomQueryParsing(unittest.TestCase):
 
     def test_parse_single_object(self):
         """Test parsing a single LDAP object response."""
-        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=John Doe,CN=Users,DC=corp,DC=local
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=John,CN=Users,DC=corp,DC=local
 LDAP 10.0.0.1 389 DC01 sAMAccountName john.doe
 LDAP 10.0.0.1 389 DC01 mail john.doe@corp.local"""
 
         results = self.parse_query_output(stdout)
 
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["dn"], "CN=John Doe,CN=Users,DC=corp,DC=local")
+        self.assertEqual(results[0]["dn"], "CN=John,CN=Users,DC=corp,DC=local")
         self.assertEqual(results[0]["attributes"]["sAMAccountName"], "john.doe")
         self.assertEqual(results[0]["attributes"]["mail"], "john.doe@corp.local")
 

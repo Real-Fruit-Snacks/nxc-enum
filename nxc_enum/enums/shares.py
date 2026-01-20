@@ -280,7 +280,17 @@ def enum_shares(args, cache):
                 output(f"{'Share':<15} {'Access':<12} {'Comment'}")
                 output(f"{'-'*15} {'-'*12} {'-'*30}")
 
+            # Track admin share access for potential elevated privileges detection
+            has_admin_share_write = False
+            has_c_dollar_write = False
+
             for share_name, perms, remark, share_type, max_users in accessible:
+                # Check for admin share access indicators
+                if share_name.upper() == "ADMIN$" and "WRITE" in perms:
+                    has_admin_share_write = True
+                if share_name.upper() == "C$" and "WRITE" in perms:
+                    has_c_dollar_write = True
+
                 if "READ" in perms and "WRITE" in perms:
                     # READ+WRITE is highest risk - can read and write data
                     access_padded = "READ,WRITE".ljust(12)
@@ -305,6 +315,34 @@ def enum_shares(args, cache):
                 else:
                     output(f"{share_name:<15} {access_str} {comment}")
             output("")
+
+            # Warn about potential elevated privileges if admin shares are writable
+            # but we didn't detect admin via Pwn3d! marker
+            primary_cred = cache.primary_credential
+            is_detected_admin = primary_cred.is_admin if primary_cred else False
+            if (has_admin_share_write or has_c_dollar_write) and not is_detected_admin:
+                output(c("=" * 60, Colors.YELLOW + Colors.BOLD))
+                output(
+                    c(
+                        "  POTENTIAL ELEVATED PRIVILEGES DETECTED",
+                        Colors.YELLOW + Colors.BOLD,
+                    )
+                )
+                if has_admin_share_write:
+                    output(c("  ADMIN$ is writable - likely local admin!", Colors.YELLOW))
+                if has_c_dollar_write:
+                    output(c("  C$ is writable - likely local admin!", Colors.YELLOW))
+                output(
+                    c(
+                        "  NetExec didn't show Pwn3d! - verify manually with:",
+                        Colors.YELLOW,
+                    )
+                )
+                output(c(f"    nxc smb {target} <auth> --local-auth", Colors.CYAN))
+                output(c("=" * 60, Colors.YELLOW + Colors.BOLD))
+                output("")
+                # Store in cache for summary
+                cache.potential_admin_access = True
 
         if no_access:
             output(c(f"NO ACCESS ({len(no_access)})", Colors.RED))

@@ -137,20 +137,44 @@ def enum_kerberoastable(args, cache):
 
     if kerberoastable:
         status(f"Found {len(kerberoastable)} Kerberoastable account(s):", "warning")
+        status(
+            "Accounts with SPNs allow any authenticated user to request TGS tickets. "
+            "These tickets contain password hashes crackable offline (hashcat -m 13100).",
+            "info",
+        )
+        # Display accounts with prominent visual emphasis
         output("")
-        output(c("KERBEROASTABLE ACCOUNTS (have SPNs)", Colors.RED))
+        output(c("=" * 60, Colors.RED + Colors.BOLD))
+        output(c("  KERBEROASTABLE ACCOUNTS (have SPNs)", Colors.RED + Colors.BOLD))
+        output(
+            c("  Service tickets can be requested and cracked offline!", Colors.RED + Colors.BOLD)
+        )
+        output(c("=" * 60, Colors.RED + Colors.BOLD))
         output("")
         for account in kerberoastable:
             user = account["username"]
             spns = account["spns"]
-            output(f"  {c(user, Colors.RED)}")
+            output(c(f"  >>> {user} <<<", Colors.RED + Colors.BOLD))
             if spns:
                 for spn in spns:
-                    output(f"    SPN: {c(spn, Colors.YELLOW)}")
+                    output(f"      SPN: {c(spn, Colors.YELLOW)}")
+
+        output("")
+        output(c("=" * 60, Colors.RED + Colors.BOLD))
 
         # Build auth hint for command using auth helper
         auth_info = get_external_tool_auth(args, cache, tool="nxc")
         auth_hint = auth_info["auth_string"]
+
+        # Show the command to get hashes RIGHT HERE (not just in Next Steps)
+        output("")
+        output(c("GET THE HASHES:", Colors.YELLOW + Colors.BOLD))
+        output(c(f"  nxc ldap {target} {auth_hint} --kerberoasting hashes.txt", Colors.CYAN))
+        output("")
+        output(c("CRACK WITH:", Colors.YELLOW + Colors.BOLD))
+        output("  hashcat -m 13100 hashes.txt wordlist.txt -r /usr/share/hashcat/rules/best64.rule")
+        output("  john --format=krb5tgs hashes.txt --wordlist=wordlist.txt")
+        output("")
 
         # Add next step recommendation
         usernames = [k["username"] for k in kerberoastable]

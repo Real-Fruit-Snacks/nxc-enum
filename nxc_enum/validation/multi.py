@@ -33,8 +33,9 @@ def _test_single_cred(
     # Check for successful auth (no STATUS_ error)
     success = "[+]" in combined_output and "STATUS_" not in combined_output
     cred.valid = success
-    # Check for local admin (Pwn3d!)
-    is_admin = "Pwn3d!" in combined_output
+    # Check for local admin - NetExec outputs "Pwn3d!" or "(Pwn3d!)" when you have local admin
+    # This indicates ability to execute commands/create services on the target
+    is_admin = "Pwn3d!" in combined_output or "(Pwn3d!)" in combined_output
     cred.is_admin = is_admin
     # Extract error message if failed
     error_msg = ""

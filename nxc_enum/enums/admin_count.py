@@ -239,7 +239,11 @@ def enum_admin_count(args, cache):
                     _print_account_detail(acct)
 
             output("")
-            output(c("These accounts have (or had) elevated privileges", Colors.CYAN))
+            status(
+                "adminCount=1 indicates accounts protected by SDProp. "
+                "These have or had Domain Admin-level privileges.",
+                "info",
+            )
             cache.copy_paste_data["admincount_accounts"].update(a.lower() for a in accounts)
         else:
             status("No accounts with adminCount attribute found", "info")
@@ -368,7 +372,11 @@ def enum_admin_count(args, cache):
                 _print_account_detail(acct)
 
         output("")
-        output(c("These accounts have (or had) elevated privileges", Colors.CYAN))
+        status(
+            "adminCount=1 indicates accounts protected by SDProp. "
+            "These have or had Domain Admin-level privileges.",
+            "info",
+        )
 
         # Print summary of verbose data if available
         _print_verbose_summary(account_details)

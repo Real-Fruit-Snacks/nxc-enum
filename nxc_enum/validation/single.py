@@ -16,7 +16,8 @@ def validate_credentials(target: str, auth: list, cache) -> tuple[bool, bool]:
     # Combine stdout and stderr for checking (verbose output may go to either)
     combined_output = stdout + stderr
 
-    is_admin = "Pwn3d!" in combined_output
+    # Check for local admin - NetExec outputs "Pwn3d!" or "(Pwn3d!)" when you have local admin
+    is_admin = "Pwn3d!" in combined_output or "(Pwn3d!)" in combined_output
 
     if "[+]" in combined_output and "STATUS_" not in combined_output:
         return True, is_admin

@@ -114,6 +114,14 @@ def print_copy_paste_section(cache: "EnumCache", args) -> None:
     _print_list_section("Potential Pivot IPs", data.get("pivot_ips", set()))
     _print_list_section("Custom Query Results", data.get("custom_query_names", set()))
 
+    # Cracked credentials section (format: username:PASSWORD)
+    _print_list_section(
+        "Cracked Credentials (user:PASSWORD)", data.get("cracked_credentials", set())
+    )
+
+    # Valid credentials section (format: domain\user:password)
+    _print_list_section("Valid Credentials (user:password)", data.get("valid_credentials", set()))
+
     output("")
 
 
@@ -375,6 +383,12 @@ def export_copy_paste_to_files(cache: "EnumCache", output_dir: str) -> int:
         files_written += 1
 
     if _write_list_to_file(dir_path, "Custom Query Results", data.get("custom_query_names", set())):
+        files_written += 1
+
+    if _write_list_to_file(dir_path, "Cracked Credentials", data.get("cracked_credentials", set())):
+        files_written += 1
+
+    if _write_list_to_file(dir_path, "Valid Credentials", data.get("valid_credentials", set())):
         files_written += 1
 
     return files_written

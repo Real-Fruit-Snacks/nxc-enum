@@ -138,26 +138,45 @@ def enum_asreproast(args, cache):
 
     if asreproastable:
         status(f"Found {len(asreproastable)} account(s) vulnerable to AS-REP roasting:", "warning")
+        status(
+            "DONT_REQUIRE_PREAUTH bypasses Kerberos pre-authentication. "
+            "Attackers can request AS-REP tickets WITHOUT credentials and crack them offline.",
+            "info",
+        )
         output("")
 
-        # Display accounts
-        output(c("VULNERABLE ACCOUNTS (DONT_REQUIRE_PREAUTH)", Colors.RED))
-        output(f"{'Username':<30} {'Notes'}")
-        output(f"{'-'*30} {'-'*40}")
+        # Display accounts with prominent visual emphasis
+        output(c("=" * 60, Colors.RED + Colors.BOLD))
+        output(c("  VULNERABLE ACCOUNTS (DONT_REQUIRE_PREAUTH)", Colors.RED + Colors.BOLD))
+        output(
+            c(
+                "  These accounts return crackable hashes WITHOUT a password!",
+                Colors.RED + Colors.BOLD,
+            )
+        )
+        output(c("=" * 60, Colors.RED + Colors.BOLD))
+        output("")
 
         for account in asreproastable:
             username = account["username"]
-            output(f"{c(username, Colors.RED):<40} Pre-auth disabled")
+            output(c(f"  >>> {username} <<<", Colors.RED + Colors.BOLD))
 
         output("")
-        output(c("ATTACK INFORMATION:", Colors.RED))
-        output(c("  [!] These accounts can be attacked WITHOUT valid credentials!", Colors.RED))
-        output(c("  [!] AS-REP roasting obtains hashes for offline password cracking.", Colors.RED))
-        output("")
+        output(c("=" * 60, Colors.RED + Colors.BOLD))
 
         # Build auth hint for command using auth helper
         auth_info = get_external_tool_auth(args, cache, tool="nxc")
         auth_hint = auth_info["auth_string"]
+
+        # Show the command to get hashes RIGHT HERE (not just in Next Steps)
+        output("")
+        output(c("GET THE HASHES:", Colors.YELLOW + Colors.BOLD))
+        output(c(f"  nxc ldap {target} {auth_hint} --asreproast hashes.txt", Colors.CYAN))
+        output("")
+        output(c("CRACK WITH:", Colors.YELLOW + Colors.BOLD))
+        output("  hashcat -m 18200 hashes.txt wordlist.txt -r /usr/share/hashcat/rules/best64.rule")
+        output("  john --format=krb5asrep hashes.txt --wordlist=wordlist.txt")
+        output("")
 
         # Add next step recommendation - this is the actual attack command
         usernames = [a["username"] for a in asreproastable]

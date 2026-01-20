@@ -261,6 +261,10 @@ class EnumCache:
             "pivot_ips": set(),
             # Custom query results (sAMAccountName values from --query)
             "custom_query_names": set(),
+            # Cracked credentials (format: username:PASSWORD for hashcat output)
+            "cracked_credentials": set(),
+            # Valid credentials (format: domain\user:password or user:password)
+            "valid_credentials": set(),
         }
 
     def add_next_step(
@@ -796,9 +800,15 @@ class EnumCache:
             "failed to connect",
             "connection refused",
             "ldap ping failed",
-            "error",
+            "timed out",
+            "connection timed out",
+            "kerberos sessionerror",
+            "status_logon_failure",
+            "status_access_denied",
         ]
-        if ldap_result[0] != 0 or any(ind in ldap_combined for ind in ldap_failure_indicators):
+        # Only mark unavailable if return code is non-zero AND we see failure indicators
+        # Don't mark unavailable just because of non-zero rc (could be partial success)
+        if any(ind in ldap_combined for ind in ldap_failure_indicators):
             self.ldap_available = False
 
         # Parse batch query results if successful

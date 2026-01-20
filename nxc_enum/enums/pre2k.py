@@ -126,12 +126,8 @@ def enum_pre2k(args, cache):
             status("Access denied - cannot check pre-2K computers", "error")
         elif "STATUS_LOGON_FAILURE" in combined.upper():
             status("Authentication failed - cannot check pre-2K computers", "error")
-        elif (
-            "Module not found" in combined
-            or "module" in combined_lower
-            and "error" in combined_lower
-        ):
-            status("pre2k module not available", "error")
+        elif "Module not found" in combined or "module 'pre2k' not found" in combined_lower:
+            status("pre2k module not available in nxc - update NetExec", "error")
         elif any(ind in combined_lower for ind in ldap_failure_indicators) or rc != 0:
             status("LDAP unavailable - cannot check pre-2K computers", "error")
         elif "No entries" in combined or "0 entries" in combined:

@@ -106,8 +106,18 @@ def parse_webdav_verbose(stdout: str, stderr: str) -> dict:
                 continue
 
             # Capture WebClient/WebDAV related INFO messages
-            if any(
-                kw in content.lower() for kw in ["webclient", "webdav", "dav", "service", "pipe"]
+            # Be specific about keywords to avoid false matches (e.g., "services.local")
+            # "service" as standalone word, not part of a domain name
+            content_lower = content.lower()
+            # Skip domain/host resolution lines (not related to WebDAV service)
+            if "resolved domain" in content_lower:
+                continue
+            if any(kw in content_lower for kw in ["webclient", "webdav", "dav rpc", "webservice"]):
+                verbose_data["info_messages"].append(content)
+                continue
+            # Match "service" only if it appears with WebDAV context
+            if "service" in content_lower and any(
+                ctx in content_lower for ctx in ["webclient", "webdav", "dav", "pipe"]
             ):
                 verbose_data["info_messages"].append(content)
                 continue

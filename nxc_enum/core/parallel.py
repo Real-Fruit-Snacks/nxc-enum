@@ -43,6 +43,7 @@ def run_parallel_modules(args, cache, is_admin: bool = False) -> None:
     from ..enums.computers import enum_computers
     from ..enums.dc_list import enum_dc_list
     from ..enums.delegation import enum_delegation
+    from ..enums.descriptions import enum_descriptions
     from ..enums.disks import enum_disks
     from ..enums.dns import enum_dns
     from ..enums.ftp import enum_ftp
@@ -94,6 +95,7 @@ def run_parallel_modules(args, cache, is_admin: bool = False) -> None:
         (enum_gmsa, "gMSA", False),  # gMSA account enumeration
         (enum_pso, "PSO", False),  # Fine-Grained Password Policies
         (enum_sccm, "SCCM", False),  # SCCM/MECM discovery
+        (enum_descriptions, "Descriptions", False),  # User descriptions (password hints)
         # SMB-based enumeration
         (enum_dns, "DNS", False),
         (enum_webdav, "WebDAV", False),
@@ -131,6 +133,7 @@ def run_parallel_modules(args, cache, is_admin: bool = False) -> None:
         "gMSA",
         "PSO",
         "SCCM",
+        "Descriptions",
         "Computers",
         "AS-REP Roast",
         "ADCS",

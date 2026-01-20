@@ -99,8 +99,9 @@ class Credential:
             auth.extend(["-H", self.hash])
         else:
             raise CredentialError(
-                f"Credential for '{self.user}' has no password, hash, kcache, AES key, or certificate. "
-                "Provide either -p/--password, -H/--hash, --use-kcache, --aesKey, or --pfx-cert/--pem-cert."
+                f"Credential for '{self.user}' has no password, hash, kcache, "
+                "AES key, or certificate. Use -p, -H, --use-kcache, --aesKey, "
+                "or --pfx-cert/--pem-cert."
             )
 
         if self.domain:
