@@ -5,6 +5,7 @@ import re
 from ..core.colors import Colors, c
 from ..core.constants import RE_BUILD, RE_OS
 from ..core.output import JSON_DATA, output, print_section, status
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex patterns for verbose OS output parsing
 RE_ARCHITECTURE = re.compile(r"\b(x64|x86|ARM64|amd64|i386)\b", re.IGNORECASE)
@@ -359,9 +360,11 @@ def enum_os_info(args, cache):
 
         # Add next step recommendations based on findings
         if verbose_data.get("is_domain_controller"):
+            auth_info = get_external_tool_auth(args, cache, tool="nxc")
+            auth_hint = auth_info["auth_string"]
             cache.add_next_step(
                 finding="Domain Controller detected",
-                command=f"nxc ldap {target} -u USER -p PASS --trusted-for-delegation",
+                command=f"nxc ldap {target} {auth_hint} --trusted-for-delegation",
                 description="Enumerate delegation settings on the DC",
                 priority="high",
             )

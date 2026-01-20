@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex patterns for parsing verbose DC and trust output
 # DC role patterns (PDC Emulator, GC, RID Master, Schema Master, etc.)
@@ -433,7 +434,7 @@ def enum_dc_list(args, cache):
     _print_forest_info(verbose_info)
 
     # Add next steps for interesting findings
-    _add_dc_next_steps(dcs, trusts, verbose_info, cache, target)
+    _add_dc_next_steps(dcs, trusts, verbose_info, cache, target, args)
 
     # Store for aggregated copy-paste section
     for dc in dcs:
@@ -555,8 +556,11 @@ def _print_forest_info(verbose_info: dict):
             output(f"  Forest Functional Level: {level}")
 
 
-def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, target: str):
+def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, target: str, args):
     """Add relevant next steps based on DC and trust findings."""
+    # Get auth info for different tools
+    nxc_auth = get_external_tool_auth(args, cache, tool="nxc")
+    rusthound_auth = get_external_tool_auth(args, cache, tool="rusthound")
 
     # Check for FSMO role holders
     fsmo_roles = []
@@ -567,10 +571,13 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, targe
             fsmo_roles.append(f"Schema: {dc_name}")
 
     if fsmo_roles:
+        fsmo_desc = "Target FSMO role holders for high-value attacks"
+        if nxc_auth["alt_auth_hint"]:
+            fsmo_desc += nxc_auth["alt_auth_hint"]
         cache.add_next_step(
             finding=f"FSMO roles identified: {', '.join(fsmo_roles[:2])}",
-            command=f"nxc ldap {target} -u <user> -p <pass> --get-sid",
-            description="Target FSMO role holders for high-value attacks",
+            command=f"nxc ldap {target} {nxc_auth['auth_string']} --get-sid",
+            description=fsmo_desc,
             priority="low",
         )
 
@@ -580,22 +587,28 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, targe
 
         # SID filtering disabled
         if trust.get("sid_filtering") is False:
+            sid_desc = "SID filtering disabled allows cross-domain privilege escalation"
+            if nxc_auth["alt_auth_hint"]:
+                sid_desc += nxc_auth["alt_auth_hint"]
             cache.add_next_step(
                 finding=f"Trust to {partner} has SID filtering disabled",
-                command=f"nxc ldap {partner} -u <user>@<trusted_domain> -p <pass> --users",
-                description="SID filtering disabled allows cross-domain privilege escalation",
+                command=f"nxc ldap {partner} {nxc_auth['auth_string']} --users",
+                description=sid_desc,
                 priority="high",
             )
 
         # Bidirectional forest trust
         if trust.get("type") and "forest" in trust["type"].lower():
             if trust.get("direction") and "bidirectional" in trust["direction"].lower():
-                cmd = f"nxc ldap {partner} -u <user>@<domain> -p <pass>"
+                cmd = f"nxc ldap {partner} {nxc_auth['auth_string']}"
                 cmd += " --trusted-for-delegation"
+                forest_desc = "Enumerate trusted forest for delegation abuse paths"
+                if nxc_auth["alt_auth_hint"]:
+                    forest_desc += nxc_auth["alt_auth_hint"]
                 cache.add_next_step(
                     finding=f"Bidirectional forest trust with {partner}",
                     command=cmd,
-                    description="Enumerate trusted forest for delegation abuse paths",
+                    description=forest_desc,
                     priority="medium",
                 )
 
@@ -603,18 +616,25 @@ def _add_dc_next_steps(dcs: list, trusts: list, verbose_info: dict, cache, targe
     rodcs = [dc for dc_name, dc in verbose_info.get("dc_details", {}).items() if dc.get("is_rodc")]
     if rodcs:
         rodc_names = [r["hostname"] for r in rodcs]
+        rodc_desc = "RODCs may have cached credentials for local accounts"
+        if nxc_auth["alt_auth_hint"]:
+            rodc_desc += nxc_auth["alt_auth_hint"]
         cache.add_next_step(
             finding=f"RODC(s) found: {', '.join(rodc_names[:2])}",
-            command="nxc ldap <rodc> -u <user> -p <pass> -M laps",
-            description="RODCs may have cached credentials for local accounts",
+            command=f"nxc ldap <rodc> {nxc_auth['auth_string']} -M laps",
+            description=rodc_desc,
             priority="low",
         )
 
     # Multiple DCs suggests larger environment - recommend bloodhound
     if len(dcs) >= 3:
+        domain = rusthound_auth["domain"]
+        rh_desc = "Collect BloodHound data for attack path analysis"
+        if rusthound_auth["alt_auth_hint"]:
+            rh_desc += rusthound_auth["alt_auth_hint"]
         cache.add_next_step(
             finding=f"Large domain with {len(dcs)} DCs",
-            command="rusthound-ce -d '<domain>' -u '<user>@<domain>' -p '<pass>' -z -c All",
-            description="Collect BloodHound data for attack path analysis",
+            command=f"rusthound-ce -d '{domain}' {rusthound_auth['auth_string']} -z -c All",
+            description=rh_desc,
             priority="medium",
         )

@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex patterns for parsing delegation output
 # Matches delegation type keywords with optional modifiers
@@ -255,20 +256,30 @@ def enum_delegation(args, cache):
             output("")
 
         # Add delegation exploitation recommendations
+        # Get impacket-style auth info for commands
+        impacket_auth = get_external_tool_auth(args, cache, tool="impacket")
+
         if unconstrained:
             # List all unconstrained accounts
             accounts_list = ", ".join([d["account"] for d in unconstrained[:3]])
             if len(unconstrained) > 3:
                 accounts_list += f" (+{len(unconstrained) - 3} more)"
+            # krbrelayx needs aesKey or similar for relay attacks
+            krbrelayx_desc = "Capture TGTs from machines authenticating to these hosts"
+            if impacket_auth["is_kerberos"] and impacket_auth["auth_string"]:
+                krbrelayx_cmd = f"krbrelayx.py {impacket_auth['auth_string']} -victim <dc_hostname>"
+            else:
+                krbrelayx_cmd = "krbrelayx.py -aesKey '<aes_key>' -victim <dc_hostname>"
+                krbrelayx_desc += "  # Requires AES key or Kerberos ticket"
             cache.add_next_step(
                 finding=f"Unconstrained delegation: {accounts_list}",
-                command="krbrelayx.py -aesKey <key> -victim <dc_hostname>",
-                description="Capture TGTs from machines authenticating to these hosts",
+                command=krbrelayx_cmd,
+                description=krbrelayx_desc,
                 priority="high",
             )
 
         if constrained:
-            domain = cache.domain_info.get("dns_domain", "<domain>")
+            domain = impacket_auth["domain"]
             # Use first constrained account with target services
             target_acct = constrained[0]
             target_spn = (
@@ -276,26 +287,47 @@ def enum_delegation(args, cache):
                 if target_acct.get("target_services")
                 else "<target_spn>"
             )
-            # Format: getST.py -spn 'SPN' -impersonate USER 'domain/user:pass'
-            cmd = f"getST.py -spn '{target_spn}' -impersonate Administrator"
-            cmd += f" '{domain}/{target_acct['account']}:<pass>' -dc-ip {target}"
+            # Format: getST.py -spn 'SPN' -impersonate USER domain/user:pass
+            # For constrained delegation, we need the compromised account's creds
+            cred_format = impacket_auth["credential_format"].replace(
+                impacket_auth["user"], target_acct["account"]
+            )
+            auth_flags = impacket_auth["auth_string"]
+            if auth_flags:
+                cmd = f"getST.py {auth_flags} -spn '{target_spn}' -impersonate Administrator"
+                cmd += f" {cred_format} -dc-ip {target}"
+            else:
+                cmd = f"getST.py -spn '{target_spn}' -impersonate Administrator"
+                cmd += f" '{domain}/{target_acct['account']}:<pass>' -dc-ip {target}"
+            const_desc = "Request service ticket as any user to delegated service"
+            if impacket_auth["alt_auth_hint"]:
+                const_desc += impacket_auth["alt_auth_hint"]
             cache.add_next_step(
                 finding=f"Constrained delegation on {target_acct['account']}",
                 command=cmd,
-                description="Request service ticket as any user to delegated service",
+                description=const_desc,
                 priority="high",
             )
 
         if rbcd:
-            domain = cache.domain_info.get("dns_domain", "<domain>")
+            domain = impacket_auth["domain"]
             target_acct = rbcd[0]
-            # Format: getST.py -spn 'SPN' -impersonate USER 'domain/user:pass'
-            cmd = f"getST.py -spn 'cifs/{target_acct['account']}'"
-            cmd += f" -impersonate Administrator '<domain>/<user>:<pass>' -dc-ip {target}"
+            # Format: getST.py -spn 'SPN' -impersonate USER domain/user:pass
+            auth_flags = impacket_auth["auth_string"]
+            cred_format = impacket_auth["credential_format"]
+            if auth_flags:
+                cmd = f"getST.py {auth_flags} -spn 'cifs/{target_acct['account']}'"
+                cmd += f" -impersonate Administrator {cred_format} -dc-ip {target}"
+            else:
+                cmd = f"getST.py -spn 'cifs/{target_acct['account']}'"
+                cmd += f" -impersonate Administrator {cred_format} -dc-ip {target}"
+            rbcd_desc = "Impersonate users to this account via RBCD"
+            if impacket_auth["alt_auth_hint"]:
+                rbcd_desc += impacket_auth["alt_auth_hint"]
             cache.add_next_step(
                 finding=f"RBCD on {target_acct['account']}",
                 command=cmd,
-                description="Impersonate users to this account via RBCD",
+                description=rbcd_desc,
                 priority="high",
             )
 

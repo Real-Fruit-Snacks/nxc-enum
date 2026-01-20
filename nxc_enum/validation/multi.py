@@ -13,7 +13,11 @@ from ..models.credential import Credential
 
 
 def _test_single_cred(
-    target: str, cred: Credential, timeout: int
+    target: str,
+    cred: Credential,
+    timeout: int,
+    port: int | None = None,
+    smb_timeout: int | None = None,
 ) -> tuple[Credential, bool, bool, str]:
     """Test a single credential against target.
 
@@ -21,7 +25,9 @@ def _test_single_cred(
         Tuple of (cred, success, is_admin, error_msg)
     """
     auth = cred.auth_args()
-    rc, stdout, stderr = run_nxc(["smb", target] + auth, timeout)
+    rc, stdout, stderr = run_nxc(
+        ["smb", target] + auth, timeout, port=port, smb_timeout=smb_timeout
+    )
     # Combine stdout and stderr for checking (verbose output may go to either)
     combined_output = stdout + stderr
     # Check for successful auth (no STATUS_ error)
@@ -69,6 +75,10 @@ def validate_credentials_multi(
     ufail_limit = getattr(args, "ufail_limit", None) if args else None
     gfail_limit = getattr(args, "gfail_limit", None) if args else None
 
+    # Extract network options
+    port = getattr(args, "port", None) if args else None
+    smb_timeout = getattr(args, "smb_timeout", None) if args else None
+
     valid_creds = []
     invalid_creds = []
 
@@ -76,27 +86,37 @@ def validate_credentials_multi(
     use_sequential = jitter is not None or fail_limit or ufail_limit or gfail_limit
 
     if use_sequential:
+        # Show spray control notifications
+        if jitter is not None and jitter > 0:
+            status(f"Spray control: jitter enabled (0-{jitter}s delay between attempts)", "info")
+        status("Spray control: using sequential mode", "info")
+
         # Sequential mode for spray control
         total_failures = 0
         consecutive_failures = 0
         user_failures: dict[str, int] = {}
+        skipped_ufail = 0  # Track credentials skipped due to per-user fail limit
         stopped_early = False
         stop_reason = ""
+        total_creds = len(creds)
 
-        for cred in creds:
+        for idx, cred in enumerate(creds, 1):
             # Check fail limits before testing
             if fail_limit and total_failures >= fail_limit:
                 stopped_early = True
-                stop_reason = f"total fail limit ({fail_limit})"
+                stop_reason = f"total fail limit ({total_failures}/{fail_limit} failures)"
                 break
             if gfail_limit and consecutive_failures >= gfail_limit:
                 stopped_early = True
-                stop_reason = f"consecutive fail limit ({gfail_limit})"
+                stop_reason = (
+                    f"consecutive fail limit "
+                    f"({consecutive_failures}/{gfail_limit} consecutive failures)"
+                )
                 break
             if ufail_limit:
                 user_key = cred.user.lower()
                 if user_failures.get(user_key, 0) >= ufail_limit:
-                    status(f"{cred.display_name()}: skipped (user fail limit)", "warning")
+                    skipped_ufail += 1
                     continue
 
             # Apply jitter delay
@@ -104,12 +124,17 @@ def validate_credentials_multi(
                 delay = random.uniform(0, jitter)
                 time.sleep(delay)
 
+            # Show progress
+            progress = f"[{idx}/{total_creds}] "
+
             try:
-                cred, success, is_admin, error_msg = _test_single_cred(target, cred, timeout)
+                cred, success, is_admin, error_msg = _test_single_cred(
+                    target, cred, timeout, port=port, smb_timeout=smb_timeout
+                )
                 if success:
                     consecutive_failures = 0
                     admin_tag = c(" (ADMIN)", Colors.RED) if is_admin else ""
-                    status(f"{cred.display_name()}: valid{admin_tag}", "success")
+                    status(f"{progress}{cred.display_name()}: valid{admin_tag}", "success")
                     valid_creds.append(cred)
                     # Stop on first success if not continuing
                     if not continue_on_success:
@@ -122,21 +147,30 @@ def validate_credentials_multi(
                     user_key = cred.user.lower()
                     user_failures[user_key] = user_failures.get(user_key, 0) + 1
                     err_detail = f" ({error_msg})" if error_msg else ""
-                    status(f"{cred.display_name()}: invalid{err_detail}", "error")
+                    status(f"{progress}{cred.display_name()}: invalid{err_detail}", "error")
                     invalid_creds.append(cred)
             except Exception as e:
                 total_failures += 1
                 consecutive_failures += 1
-                status(f"Error validating {cred.display_name()}: {e}", "error")
+                status(f"{progress}Error validating {cred.display_name()}: {e}", "error")
 
         if stopped_early and stop_reason:
             status(f"Stopped early: {stop_reason}", "warning")
+
+        # Show summary of skipped credentials
+        if skipped_ufail > 0:
+            status(f"Skipped {skipped_ufail} credential(s) due to per-user fail limit", "info")
     else:
         # Parallel mode (default)
         with ThreadPoolExecutor(
             max_workers=min(len(creds), MAX_CREDENTIAL_VALIDATION_WORKERS)
         ) as executor:
-            futures = [executor.submit(_test_single_cred, target, cred, timeout) for cred in creds]
+            futures = [
+                executor.submit(
+                    _test_single_cred, target, cred, timeout, port=port, smb_timeout=smb_timeout
+                )
+                for cred in creds
+            ]
             for future in as_completed(futures):
                 try:
                     cred, success, is_admin, error_msg = future.result()

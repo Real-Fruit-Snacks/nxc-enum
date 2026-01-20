@@ -15,6 +15,7 @@ import socket
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, is_proxy_mode, output, print_section, status
 from ..core.runner import check_port
+from ..reporting.next_steps import get_external_tool_auth
 
 # DCOM port
 DCOM_PORT = 135
@@ -281,10 +282,12 @@ def enum_ioxid(args, cache):
             output("")
 
             # Add pivot recommendations
+            auth_info = get_external_tool_auth(args, cache, tool="nxc")
+            auth_hint = auth_info["auth_string"]
             for ip in other_networks[:3]:  # Limit to first 3
                 cache.add_next_step(
                     finding=f"Additional network: {ip}",
-                    command=f"nxc smb {ip} -u '{args.user or '<user>'}' -p '<pass>'",
+                    command=f"nxc smb {ip} {auth_hint}",
                     description=f"Investigate network segment via {ip}",
                     priority="medium",
                 )

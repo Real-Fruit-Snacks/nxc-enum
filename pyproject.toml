@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nxc-enum"
-version = "1.6.0"
+version = "1.9.0"
 description = "NetExec wrapper with enum4linux-ng style output for Active Directory enumeration"
 readme = "README.md"
 license = {text = "MIT"}

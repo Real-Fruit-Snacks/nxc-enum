@@ -10,6 +10,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 
 def enum_mssql(args, cache):
@@ -111,17 +112,8 @@ def enum_mssql(args, cache):
         output("")
 
         # Build auth string for recommendations
-        if args.user:
-            if args.password:
-                auth_str = f"-u '{args.user}' -p '<password>'"
-            elif args.hash:
-                auth_str = f"-u '{args.user}' -H '<hash>'"
-            else:
-                auth_str = f"-u '{args.user}' -p '<password>'"
-            if args.domain:
-                auth_str += f" -d '{args.domain}'"
-        else:
-            auth_str = "-u '<user>' -p '<password>'"
+        auth_info = get_external_tool_auth(args, cache, tool="nxc")
+        auth_str = auth_info["auth_string"]
 
         # Provide enumeration command recommendations
         output(c("RECOMMENDED ENUMERATION COMMANDS:", Colors.YELLOW))

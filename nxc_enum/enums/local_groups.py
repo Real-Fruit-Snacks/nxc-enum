@@ -33,6 +33,12 @@ def enum_local_groups(args, cache, is_admin: bool = False):
         return
 
     auth = cache.auth_args
+
+    # Check for group filter
+    group_filter = getattr(args, "local_groups_filter", None)
+    if group_filter:
+        status(f"Filtering to group: {group_filter}", "info")
+
     status("Enumerating local groups...")
 
     # Query local groups
@@ -88,43 +94,73 @@ def enum_local_groups(args, cache, is_admin: bool = False):
             if group_name.lower() in HIGH_VALUE_GROUP_NAMES:
                 high_value_groups.append(group_name)
 
-    # Store results
+    # Store results (all groups, before filtering)
     cache.local_groups = local_groups
     cache.high_value_local_groups = high_value_groups
 
+    # Apply filter if specified
+    display_groups = local_groups
+    display_high_value = high_value_groups
+    if group_filter:
+        # Case-insensitive matching
+        filter_lower = group_filter.lower()
+        matched_groups = {
+            name: info for name, info in local_groups.items() if name.lower() == filter_lower
+        }
+        if not matched_groups:
+            status(f"Group '{group_filter}' not found", "error")
+            # JSON export with empty filtered result
+            if args.json_output:
+                JSON_DATA["local_groups"] = {
+                    "groups": {name: {"rid": info["rid"]} for name, info in local_groups.items()},
+                    "high_value_groups": high_value_groups,
+                    "total_groups": len(local_groups),
+                    "filter": group_filter,
+                    "filtered_groups": {},
+                }
+            return
+        display_groups = matched_groups
+        display_high_value = [g for g in high_value_groups if g.lower() == filter_lower]
+
     # Display results
-    if local_groups:
-        total_groups = len(local_groups)
-        status(f"Found {total_groups} local group(s)", "success")
+    if display_groups:
+        total_groups = len(display_groups)
+        if group_filter:
+            status(f"Found {total_groups} matching group(s)", "success")
+        else:
+            status(f"Found {total_groups} local group(s)", "success")
         output("")
 
         # Show high-value groups first (privilege escalation targets)
-        if high_value_groups:
+        if display_high_value:
             output(c("HIGH-VALUE GROUPS (Privilege Escalation)", Colors.RED + Colors.BOLD))
             output(f"{'-'*50}")
-            for group_name in sorted(high_value_groups):
-                group_info = local_groups[group_name]
+            for group_name in sorted(display_high_value):
+                group_info = display_groups[group_name]
                 rid = group_info["rid"]
                 output(f"  {c('[!]', Colors.YELLOW)} {c(group_name, Colors.YELLOW)} (RID: {rid})")
             output("")
 
         # Show all groups with RIDs
-        output(c("ALL LOCAL GROUPS", Colors.CYAN))
+        if group_filter:
+            output(c("FILTERED LOCAL GROUPS", Colors.CYAN))
+        else:
+            output(c("ALL LOCAL GROUPS", Colors.CYAN))
         output(f"{'Group Name':<40} {'RID':<8}")
         output(f"{'-'*40} {'-'*8}")
 
-        for group_name in sorted(local_groups.keys()):
-            group_info = local_groups[group_name]
+        for group_name in sorted(display_groups.keys()):
+            group_info = display_groups[group_name]
             rid = group_info["rid"]
             # Highlight high-value groups
-            if group_name.lower() in [g.lower() for g in high_value_groups]:
+            if group_name.lower() in [g.lower() for g in display_high_value]:
                 output(f"{c(group_name, Colors.YELLOW):<40} {rid:<8}")
             else:
                 output(f"{group_name:<40} {rid:<8}")
         output("")
 
-        # Store copy-paste data for group names
-        cache.copy_paste_data["local_group_names"] = set(local_groups.keys())
+        # Store copy-paste data for group names (filtered)
+        cache.copy_paste_data["local_group_names"] = set(display_groups.keys())
 
     else:
         # Check for common errors
@@ -151,8 +187,14 @@ def enum_local_groups(args, cache, is_admin: bool = False):
             status("No local groups enumerated", "info")
 
     if args.json_output:
-        JSON_DATA["local_groups"] = {
+        json_data = {
             "groups": {name: {"rid": info["rid"]} for name, info in local_groups.items()},
             "high_value_groups": high_value_groups,
             "total_groups": len(local_groups),
         }
+        if group_filter:
+            json_data["filter"] = group_filter
+            json_data["filtered_groups"] = {
+                name: {"rid": info["rid"]} for name, info in display_groups.items()
+            }
+        JSON_DATA["local_groups"] = json_data

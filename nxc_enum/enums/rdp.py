@@ -11,6 +11,7 @@ import re
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex to extract NLA status from nxc output format: (nla:True) or (nla:False)
 RE_NLA_STATUS = re.compile(r"\(nla:(\w+)\)", re.IGNORECASE)
@@ -122,9 +123,11 @@ def enum_rdp(args, cache):
             )
 
             # Add next step for RDP without NLA
+            auth_info = get_external_tool_auth(args, cache, tool="nxc")
+            auth_hint = auth_info["auth_string"]
             cache.add_next_step(
                 finding="RDP without NLA requirement",
-                command=f"nxc rdp {target} -u '' -p '' --screenshot",
+                command=f"nxc rdp {target} {auth_hint} --screenshot",
                 description="Attempt to capture RDP screenshot (may reveal logged-in user)",
                 priority="medium",
             )

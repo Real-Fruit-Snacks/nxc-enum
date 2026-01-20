@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # Patterns for verbose spooler output parsing
 RE_SPOOLER_STATUS = re.compile(
@@ -158,9 +159,11 @@ def enum_printers(args, cache):
             cache.spooler_running = True
 
             # Add PrintNightmare recommendation
+            auth_info = get_external_tool_auth(args, cache, tool="nxc")
+            auth_hint = auth_info["auth_string"]
             cache.add_next_step(
                 finding="Print spooler service running",
-                command=f"nxc smb {target} -u '<user>' -p '<pass>' -M printnightmare",
+                command=f"nxc smb {target} {auth_hint} -M printnightmare",
                 description="Check for PrintNightmare (CVE-2021-34527) vulnerability",
                 priority="high",
             )

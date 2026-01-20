@@ -6,7 +6,7 @@ from .copy_paste import (
     print_copy_paste_section,
 )
 from .multi_summary import print_multi_target_summary
-from .next_steps import print_next_steps
+from .next_steps import get_external_tool_auth, print_next_steps
 from .share_matrix import print_share_matrix
 from .summary import print_executive_summary
 from .summary_multi import print_executive_summary_multi
@@ -20,4 +20,5 @@ __all__ = [
     "print_copy_paste_section",
     "merge_copy_paste_data",
     "export_copy_paste_to_files",
+    "get_external_tool_auth",
 ]

@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex patterns for parsing verbose --password-not-required output
 # User and status from main output line
@@ -388,13 +389,8 @@ def enum_pwd_not_required(args, cache):
                 names_str += f" (+{len(enabled_accounts) - 3} more)"
 
             # Build auth hint for command
-            auth_hint = f"-u '{args.user}'" if args.user else "-u <user>"
-            if args.password:
-                auth_hint += f" -p '{args.password}'"
-            elif args.hash:
-                auth_hint += f" -H '{args.hash}'"
-            else:
-                auth_hint += " -p '<password>'"
+            auth_info = get_external_tool_auth(args, cache, tool="nxc")
+            auth_hint = auth_info["auth_string"]
 
             cache.add_next_step(
                 finding=f"PASSWD_NOTREQD accounts: {names_str}",

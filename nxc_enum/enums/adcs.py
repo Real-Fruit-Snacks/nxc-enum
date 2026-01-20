@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 
 def enum_adcs(args, cache):
@@ -120,12 +121,15 @@ def enum_adcs(args, cache):
             output(f"  {msg}")
 
         # Add next step recommendation for certipy
-        domain = cache.domain_info.get("dns_domain", "<domain>")
-        user = args.user if args.user else "<user>"
+        auth = get_external_tool_auth(args, cache, tool="certipy")
+        cmd = f"certipy find {auth['auth_string']} -dc-ip {target}"
+        desc = "Check for ESC1-ESC8 certificate template vulnerabilities"
+        if auth["alt_auth_hint"]:
+            desc += auth["alt_auth_hint"]
         cache.add_next_step(
             finding=f"ADCS infrastructure found ({len(ca_names)} CA)",
-            command=f"certipy find -u '{user}@{domain}' -p '<pass>' -dc-ip {target}",
-            description="Check for ESC1-ESC8 certificate template vulnerabilities",
+            command=cmd,
+            description=desc,
             priority="high",
         )
 

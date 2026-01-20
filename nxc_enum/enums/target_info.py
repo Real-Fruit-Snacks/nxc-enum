@@ -19,13 +19,13 @@ def enum_target_info(args, creds: list = None, cache=None):
         if admin_creds:
             output(c("  Local Admins:", Colors.RED))
             for cred in admin_creds:
-                auth_type = "password" if cred.password else "hash" if cred.hash else "unknown"
+                auth_type = cred.auth_type()
                 output(f"    - {cred.display_name()} ({auth_type})")
 
         if std_creds:
             output("  Standard Users:")
             for cred in std_creds:
-                auth_type = "password" if cred.password else "hash" if cred.hash else "unknown"
+                auth_type = cred.auth_type()
                 output(f"    - {cred.display_name()} ({auth_type})")
     else:
         if args.user:

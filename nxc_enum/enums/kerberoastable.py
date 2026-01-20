@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.constants import RE_LDAP_CN
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex to extract SPN values from verbose output
 # nxc --query uses space-padded format: "servicePrincipalName   HTTP/server.domain.local"
@@ -147,14 +148,9 @@ def enum_kerberoastable(args, cache):
                 for spn in spns:
                     output(f"    SPN: {c(spn, Colors.YELLOW)}")
 
-        # Build auth hint for command
-        auth_hint = f"-u '{args.user}'" if args.user else "-u <user>"
-        if args.password:
-            auth_hint += f" -p '{args.password}'"
-        elif args.hash:
-            auth_hint += f" -H '{args.hash}'"
-        else:
-            auth_hint += " -p '<password>'"
+        # Build auth hint for command using auth helper
+        auth_info = get_external_tool_auth(args, cache, tool="nxc")
+        auth_hint = auth_info["auth_string"]
 
         # Add next step recommendation
         usernames = [k["username"] for k in kerberoastable]

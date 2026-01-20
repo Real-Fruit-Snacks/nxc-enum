@@ -10,7 +10,7 @@ from .constants import INDICATORS
 _REDACTED = "[REDACTED]"
 
 # Flags that take credential arguments (next arg is sensitive)
-_SENSITIVE_FLAGS = {"-p", "--password", "-H", "--hash"}
+_SENSITIVE_FLAGS = {"-p", "--password", "-H", "--hash", "--pfx-pass"}
 
 
 def _sanitize_cmd_args(cmd_args: List[str]) -> List[str]:

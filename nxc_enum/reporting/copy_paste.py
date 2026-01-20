@@ -112,6 +112,7 @@ def print_copy_paste_section(cache: "EnumCache", args) -> None:
     _print_list_section("Weak PSO Groups", data.get("weak_pso_groups", set()))
     _print_list_section("iOXID Addresses", data.get("ioxid_addresses", set()))
     _print_list_section("Potential Pivot IPs", data.get("pivot_ips", set()))
+    _print_list_section("Custom Query Results", data.get("custom_query_names", set()))
 
     output("")
 
@@ -371,6 +372,9 @@ def export_copy_paste_to_files(cache: "EnumCache", output_dir: str) -> int:
         files_written += 1
 
     if _write_list_to_file(dir_path, "Pivot IPs", data.get("pivot_ips", set())):
+        files_written += 1
+
+    if _write_list_to_file(dir_path, "Custom Query Results", data.get("custom_query_names", set())):
         files_written += 1
 
     return files_written

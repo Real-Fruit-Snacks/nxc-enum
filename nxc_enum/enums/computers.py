@@ -6,6 +6,7 @@ from collections import Counter
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex to parse computer entries from nxc ldap --computers output
 # Format: LDAP  IP  PORT  HOST  ComputerName$  OSInfo  OSVersion
@@ -249,9 +250,11 @@ def enum_computers(args, cache):
             comp_list = ", ".join(c["name"] for c in outdated_computers[:3])
             if len(outdated_computers) > 3:
                 comp_list += f" (+{len(outdated_computers) - 3} more)"
+            auth_info = get_external_tool_auth(args, cache, tool="nxc")
+            auth_hint = auth_info["auth_string"]
             cache.add_next_step(
                 finding=f"Outdated OS: {comp_list}",
-                command=f"nxc smb {target} -u <user> -p <pass> --gen-relay-list outdated.txt",
+                command=f"nxc smb {target} {auth_hint} --gen-relay-list outdated.txt",
                 description="Generate relay target list - outdated systems may be vulnerable",
                 priority="medium",
             )

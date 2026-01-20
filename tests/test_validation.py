@@ -197,6 +197,306 @@ class TestSprayControlOptions(unittest.TestCase):
         self.assertEqual(len(result), 3)
 
 
+class TestSprayControlFeedback(unittest.TestCase):
+    """Test spray control feedback messages."""
+
+    def _make_args(self, **kwargs):
+        """Create args namespace with defaults."""
+        defaults = {
+            "continue_on_success": False,
+            "jitter": None,
+            "fail_limit": None,
+            "ufail_limit": None,
+            "gfail_limit": None,
+            "port": None,
+            "smb_timeout": None,
+        }
+        defaults.update(kwargs)
+        return Namespace(**defaults)
+
+    def _make_cred(self, user: str, password: str = "pass"):
+        """Create a test credential."""
+        return Credential(user=user, password=password)
+
+    def _get_status_messages(self, mock_status):
+        """Extract all status messages from mock calls."""
+        return [call[0][0] for call in mock_status.call_args_list]
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_jitter_indication_shown_when_jitter_positive(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that jitter message is shown when jitter > 0."""
+        creds = [self._make_cred("user1")]
+        args = self._make_args(jitter=5)
+
+        mock_test.return_value = (creds[0], True, False, "")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        jitter_msgs = [m for m in messages if "jitter enabled" in m]
+        self.assertEqual(len(jitter_msgs), 1)
+        self.assertIn("0-5s delay", jitter_msgs[0])
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_jitter_indication_not_shown_when_jitter_zero(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that jitter message is NOT shown when jitter is 0."""
+        creds = [self._make_cred("user1")]
+        args = self._make_args(jitter=0)
+
+        mock_test.return_value = (creds[0], True, False, "")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        jitter_msgs = [m for m in messages if "jitter enabled" in m]
+        self.assertEqual(len(jitter_msgs), 0)
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_sequential_mode_notification_shown(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that sequential mode message appears when spray controls are active."""
+        creds = [self._make_cred("user1")]
+        args = self._make_args(fail_limit=5)  # Any spray control triggers sequential
+
+        mock_test.return_value = (creds[0], True, False, "")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        seq_msgs = [m for m in messages if "sequential mode" in m]
+        self.assertEqual(len(seq_msgs), 1)
+        self.assertIn("Spray control: using sequential mode", seq_msgs[0])
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_sequential_mode_notification_for_all_controls(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that sequential mode shown for each spray control type."""
+        creds = [self._make_cred("user1")]
+
+        # Test with jitter
+        args = self._make_args(jitter=1)
+        mock_test.return_value = (creds[0], True, False, "")
+        validate_credentials_multi("target", creds, 30, args)
+        self.assertIn(
+            "Spray control: using sequential mode",
+            self._get_status_messages(mock_status),
+        )
+
+        # Test with ufail_limit
+        mock_status.reset_mock()
+        args = self._make_args(ufail_limit=3)
+        validate_credentials_multi("target", creds, 30, args)
+        self.assertIn(
+            "Spray control: using sequential mode",
+            self._get_status_messages(mock_status),
+        )
+
+        # Test with gfail_limit
+        mock_status.reset_mock()
+        args = self._make_args(gfail_limit=5)
+        validate_credentials_multi("target", creds, 30, args)
+        self.assertIn(
+            "Spray control: using sequential mode",
+            self._get_status_messages(mock_status),
+        )
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_progress_counter_format(self, mock_output, mock_status, mock_print_section, mock_test):
+        """Test that progress format [X/Y] is shown in sequential mode."""
+        creds = [self._make_cred(f"user{i}") for i in range(3)]
+        args = self._make_args(jitter=0, continue_on_success=True)
+
+        mock_test.side_effect = [
+            (creds[0], True, False, ""),
+            (creds[1], False, False, "STATUS_LOGON_FAILURE"),
+            (creds[2], True, False, ""),
+        ]
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+
+        # Check for progress format [1/3], [2/3], [3/3]
+        progress_msgs = [m for m in messages if "[1/3]" in m or "[2/3]" in m or "[3/3]" in m]
+        self.assertEqual(len(progress_msgs), 3)
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_progress_counter_increments_correctly(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that progress counter increments from 1 to total."""
+        creds = [self._make_cred(f"user{i}") for i in range(5)]
+        args = self._make_args(jitter=0, continue_on_success=True)
+
+        mock_test.side_effect = [(creds[i], True, False, "") for i in range(5)]
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+
+        # Verify each progress indicator appears
+        for i in range(1, 6):
+            expected_pattern = f"[{i}/5]"
+            matching = [m for m in messages if expected_pattern in m]
+            self.assertEqual(len(matching), 1, f"Expected {expected_pattern} to appear once")
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_skipped_credentials_summary_shown(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that ufail_limit skip count is shown at end."""
+        # Multiple passwords for same user to trigger skips
+        creds = [
+            self._make_cred("user1", "pass1"),
+            self._make_cred("user1", "pass2"),
+            self._make_cred("user1", "pass3"),
+            self._make_cred("user1", "pass4"),
+        ]
+        args = self._make_args(ufail_limit=2, continue_on_success=True)
+
+        mock_test.side_effect = [
+            (creds[0], False, False, "STATUS_LOGON_FAILURE"),  # user1 fail 1
+            (creds[1], False, False, "STATUS_LOGON_FAILURE"),  # user1 fail 2
+            # pass3 and pass4 should be skipped
+        ]
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        skip_msgs = [m for m in messages if "Skipped" in m and "per-user fail limit" in m]
+        self.assertEqual(len(skip_msgs), 1)
+        self.assertIn("2 credential(s)", skip_msgs[0])
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_skipped_summary_not_shown_when_zero(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that skip summary is not shown when no credentials skipped."""
+        creds = [self._make_cred(f"user{i}") for i in range(3)]  # Different users
+        args = self._make_args(ufail_limit=2, continue_on_success=True)
+
+        mock_test.side_effect = [
+            (creds[0], False, False, "STATUS_LOGON_FAILURE"),
+            (creds[1], False, False, "STATUS_LOGON_FAILURE"),
+            (creds[2], True, False, ""),
+        ]
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        skip_msgs = [m for m in messages if "Skipped" in m and "per-user fail limit" in m]
+        self.assertEqual(len(skip_msgs), 0)
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_fail_limit_stop_message_includes_counts(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that fail_limit stop message includes failure counts."""
+        creds = [self._make_cred(f"user{i}") for i in range(5)]
+        args = self._make_args(fail_limit=3, jitter=0)
+
+        mock_test.return_value = (creds[0], False, False, "STATUS_LOGON_FAILURE")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        stop_msgs = [m for m in messages if "Stopped early" in m]
+        self.assertEqual(len(stop_msgs), 1)
+        self.assertIn("3/3 failures", stop_msgs[0])
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_gfail_limit_stop_message_includes_counts(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that gfail_limit stop message includes consecutive failure counts."""
+        creds = [self._make_cred(f"user{i}") for i in range(5)]
+        args = self._make_args(gfail_limit=2, jitter=0)
+
+        mock_test.return_value = (creds[0], False, False, "STATUS_LOGON_FAILURE")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        stop_msgs = [m for m in messages if "Stopped early" in m]
+        self.assertEqual(len(stop_msgs), 1)
+        self.assertIn("consecutive fail limit", stop_msgs[0])
+        self.assertIn("2/2 consecutive failures", stop_msgs[0])
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_valid_cred_stop_message(self, mock_output, mock_status, mock_print_section, mock_test):
+        """Test that stop message shown when valid cred found without continue_on_success."""
+        creds = [self._make_cred(f"user{i}") for i in range(3)]
+        args = self._make_args(jitter=0, continue_on_success=False)
+
+        mock_test.return_value = (creds[0], True, False, "")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        stop_msgs = [m for m in messages if "Stopped early" in m]
+        self.assertEqual(len(stop_msgs), 1)
+        self.assertIn("found valid credential", stop_msgs[0])
+
+    @patch("nxc_enum.validation.multi._test_single_cred")
+    @patch("nxc_enum.validation.multi.print_section")
+    @patch("nxc_enum.validation.multi.status")
+    @patch("nxc_enum.validation.multi.output")
+    def test_parallel_mode_no_progress_counters(
+        self, mock_output, mock_status, mock_print_section, mock_test
+    ):
+        """Test that parallel mode does not show [X/Y] progress counters."""
+        creds = [self._make_cred(f"user{i}") for i in range(3)]
+        args = self._make_args()  # No spray options = parallel mode
+
+        mock_test.return_value = (creds[0], True, False, "")
+
+        validate_credentials_multi("target", creds, 30, args)
+
+        messages = self._get_status_messages(mock_status)
+        # In parallel mode, no [X/Y] prefixes
+        progress_msgs = [m for m in messages if "[1/3]" in m or "[2/3]" in m or "[3/3]" in m]
+        self.assertEqual(len(progress_msgs), 0)
+
+
 class TestCredentialTestFunction(unittest.TestCase):
     """Test the single credential test function."""
 

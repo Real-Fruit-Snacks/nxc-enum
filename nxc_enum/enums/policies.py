@@ -5,6 +5,7 @@ import re
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex patterns for verbose --pass-pol output parsing
 # Fine-grained password policies (FGPP)
@@ -304,10 +305,13 @@ def enum_policies(args, cache):
         cache.domain_info["functional_level"] = verbose_info["domain_functional_level"]
 
     # Add next steps for security findings from verbose data
+    auth_info = get_external_tool_auth(args, cache, tool="nxc")
+    auth_hint = auth_info["auth_string"]
+
     if verbose_info.get("clear_text_passwords"):
         cache.add_next_step(
             finding="Reversible encryption enabled",
-            command=f"nxc ldap {target} -u <user> -p <pass> --asreproast output.txt",
+            command=f"nxc ldap {target} {auth_hint} --asreproast output.txt",
             description="Clear text passwords may be stored - check for AS-REP roastable accounts",
             priority="high",
         )
@@ -317,7 +321,7 @@ def enum_policies(args, cache):
             if fgpp.get("applies_to"):
                 cache.add_next_step(
                     finding=f"Fine-grained password policy: {fgpp.get('name', 'Unknown')}",
-                    command=f"nxc ldap {target} -u <user> -p <pass> -M get-desc-users",
+                    command=f"nxc ldap {target} {auth_hint} -M get-desc-users",
                     description=f"FGPP applies to: {', '.join(fgpp.get('applies_to', []))}",
                     priority="low",
                 )

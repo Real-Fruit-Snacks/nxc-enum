@@ -546,5 +546,584 @@ class TestFilePermissions(unittest.TestCase):
             os.unlink(temp_path)
 
 
+class TestExternalToolAuth(unittest.TestCase):
+    """Test get_external_tool_auth() function for external tool authentication string generation."""
+
+    def _make_args(
+        self,
+        user=None,
+        password=None,
+        hash_val=None,
+        domain=None,
+        use_kcache=False,
+        aes_key=None,
+        kerberos=False,
+        pfx_cert=None,
+        pem_cert=None,
+    ):
+        """Create mock args object for testing."""
+
+        class MockArgs:
+            pass
+
+        args = MockArgs()
+        args.user = user
+        args.password = password
+        args.hash = hash_val
+        args.domain = domain
+        args.use_kcache = use_kcache
+        args.aes_key = aes_key
+        args.kerberos = kerberos
+        args.pfx_cert = pfx_cert
+        args.pem_cert = pem_cert
+        return args
+
+    def _make_cache(self, domain_info=None, primary_credential=None):
+        """Create mock cache object for testing."""
+
+        class MockCache:
+            pass
+
+        cache = MockCache()
+        cache.domain_info = domain_info or {}
+        cache.primary_credential = primary_credential
+        return cache
+
+    # =====================================================================
+    # Password Authentication Tests
+    # =====================================================================
+
+    def test_password_auth_impacket(self):
+        """Test password auth string for impacket tools."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="P@ssw0rd!", domain="CORP.LOCAL")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertEqual(result["credential_format"], "'CORP.LOCAL/admin:P@ssw0rd!'")
+        self.assertEqual(result["auth_string"], "")  # No extra flags for password
+        self.assertFalse(result["is_kerberos"])
+
+    def test_password_auth_certipy(self):
+        """Test password auth string for certipy."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="Secret123", domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="certipy")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-p 'Secret123'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_password_auth_nxc(self):
+        """Test password auth string for nxc (NetExec)."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="secret", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("-p 'secret'", result["auth_string"])
+        self.assertIn("-d 'CORP'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_password_auth_adidnsdump(self):
+        """Test password auth string for adidnsdump."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="pass123", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="adidnsdump")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertIn("-u 'CORP\\\\admin'", result["auth_string"])
+        self.assertIn("-p 'pass123'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_password_auth_rusthound(self):
+        """Test password auth string for rusthound."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="hunter2", domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="rusthound")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-p 'hunter2'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_password_auth_empty_password_is_no_auth(self):
+        """Test that empty password is treated as no auth (by function design).
+
+        Note: The function explicitly converts empty string passwords to None,
+        treating them as "no authentication". This is by design - for null session
+        auth, use the actual Credential class which handles empty passwords differently.
+        """
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="guest", password="", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        # Empty password is converted to None and treated as no auth
+        self.assertEqual(result["auth_type"], "none")
+        self.assertIn("<pass>", result["auth_string"])
+
+    # =====================================================================
+    # Hash Authentication Tests
+    # =====================================================================
+
+    def test_hash_auth_impacket(self):
+        """Test hash auth string for impacket tools."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(
+            user="admin", hash_val="aad3b435b51404ee:31d6cfe0d16ae931", domain="CORP"
+        )
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "hash")
+        self.assertEqual(result["credential_format"], "'CORP/admin'")
+        self.assertIn("-hashes", result["auth_string"])
+        self.assertIn(":aad3b435b51404ee:31d6cfe0d16ae931", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_hash_auth_certipy(self):
+        """Test hash auth string for certipy."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", hash_val="abc123def456", domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="certipy")
+
+        self.assertEqual(result["auth_type"], "hash")
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-hashes ':abc123def456'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_hash_auth_nxc(self):
+        """Test hash auth string for nxc."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", hash_val="aabbccdd", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "hash")
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("-H 'aabbccdd'", result["auth_string"])
+        self.assertIn("-d 'CORP'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_hash_auth_adidnsdump(self):
+        """Test hash auth string for adidnsdump."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", hash_val="ntlmhash", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="adidnsdump")
+
+        self.assertEqual(result["auth_type"], "hash")
+        self.assertIn("-u 'CORP\\\\admin'", result["auth_string"])
+        self.assertIn("--hashes ':ntlmhash'", result["auth_string"])
+        self.assertFalse(result["is_kerberos"])
+
+    def test_hash_auth_rusthound_shows_limitation(self):
+        """Test that rusthound shows limitation note for hash auth."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", hash_val="somehash", domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="rusthound")
+
+        # rusthound doesn't support hashes directly
+        self.assertEqual(result["auth_type"], "hash")
+        self.assertIn("rusthound needs password", result["alt_auth_hint"])
+
+    # =====================================================================
+    # Kerberos with Ccache Tests
+    # =====================================================================
+
+    def test_kcache_auth_impacket(self):
+        """Test kcache auth string for impacket tools."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", use_kcache=True, domain="CORP.LOCAL")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertEqual(result["credential_format"], "'CORP.LOCAL/admin'")
+        self.assertIn("-k", result["auth_string"])
+        self.assertIn("-no-pass", result["auth_string"])
+        self.assertIn("KRB5CCNAME", result["kerberos_hint"])
+
+    def test_kcache_auth_certipy(self):
+        """Test kcache auth string for certipy."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", use_kcache=True, domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="certipy")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-k", result["auth_string"])
+        self.assertIn("-no-pass", result["auth_string"])
+        self.assertIn("KRB5CCNAME", result["kerberos_hint"])
+
+    def test_kcache_auth_nxc(self):
+        """Test kcache auth string for nxc."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", use_kcache=True, domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("--use-kcache", result["auth_string"])
+        self.assertIn("KRB5CCNAME", result["kerberos_hint"])
+
+    def test_kcache_auth_adidnsdump(self):
+        """Test kcache auth string for adidnsdump."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", use_kcache=True, domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="adidnsdump")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertIn("-u 'CORP\\\\admin'", result["auth_string"])
+        self.assertIn("-k", result["auth_string"])
+        self.assertIn("KRB5CCNAME", result["kerberos_hint"])
+
+    def test_kcache_auth_rusthound(self):
+        """Test kcache auth string for rusthound."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", use_kcache=True, domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="rusthound")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-k", result["auth_string"])
+
+    # =====================================================================
+    # Kerberos with AES Key Tests
+    # =====================================================================
+
+    def test_aeskey_auth_impacket(self):
+        """Test AES key auth string for impacket tools."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        aes_key = "0123456789abcdef" * 4  # 64-char AES256 key
+        args = self._make_args(user="admin", aes_key=aes_key, domain="CORP.LOCAL")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertEqual(result["credential_format"], "'CORP.LOCAL/admin'")
+        self.assertIn("-aesKey", result["auth_string"])
+        self.assertIn(aes_key, result["auth_string"])
+
+    def test_aeskey_auth_certipy(self):
+        """Test AES key auth string for certipy (needs ticket first)."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        aes_key = "0123456789abcdef" * 4
+        args = self._make_args(user="admin", aes_key=aes_key, domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="certipy")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        # Certipy doesn't support aesKey directly, uses kcache
+        self.assertIn("-k", result["auth_string"])
+        self.assertIn("-no-pass", result["auth_string"])
+        self.assertIn("getTGT.py", result["kerberos_hint"])
+
+    def test_aeskey_auth_nxc(self):
+        """Test AES key auth string for nxc."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        aes_key = "aabbccdd" * 8
+        args = self._make_args(user="admin", aes_key=aes_key, domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("--aesKey", result["auth_string"])
+        self.assertIn(aes_key, result["auth_string"])
+
+    def test_aeskey_auth_adidnsdump(self):
+        """Test AES key auth string for adidnsdump (needs ticket first)."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        aes_key = "0123456789abcdef" * 4
+        args = self._make_args(user="admin", aes_key=aes_key, domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="adidnsdump")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        # adidnsdump uses -k, not direct aesKey
+        self.assertIn("-k", result["auth_string"])
+        self.assertIn("getTGT.py", result["kerberos_hint"])
+
+    # =====================================================================
+    # Certificate Authentication Tests
+    # =====================================================================
+
+    def test_pfx_cert_auth_impacket(self):
+        """Test PFX certificate auth string for impacket tools."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", pfx_cert="/path/to/cert.pfx", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "certificate")
+        self.assertEqual(result["credential_format"], "'CORP/admin'")
+        self.assertIn("-pfx", result["auth_string"])
+        self.assertIn("/path/to/cert.pfx", result["auth_string"])
+
+    def test_pem_cert_auth_impacket(self):
+        """Test PEM certificate auth string for impacket tools."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", pem_cert="/path/to/cert.pem", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "certificate")
+        self.assertEqual(result["credential_format"], "'CORP/admin'")
+        self.assertIn("-cert-pfx", result["auth_string"])
+        self.assertIn("/path/to/cert.pem", result["auth_string"])
+
+    def test_pfx_cert_auth_certipy(self):
+        """Test PFX certificate auth string for certipy."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", pfx_cert="/certs/user.pfx", domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="certipy")
+
+        self.assertEqual(result["auth_type"], "certificate")
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-pfx '/certs/user.pfx'", result["auth_string"])
+
+    def test_pem_cert_auth_certipy(self):
+        """Test PEM certificate auth string for certipy."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", pem_cert="/certs/user.pem", domain="corp.local")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="certipy")
+
+        self.assertEqual(result["auth_type"], "certificate")
+        self.assertIn("-u 'admin@corp.local'", result["auth_string"])
+        self.assertIn("-cert '/certs/user.pem'", result["auth_string"])
+
+    def test_pfx_cert_auth_nxc(self):
+        """Test PFX certificate auth string for nxc."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", pfx_cert="/path/cert.pfx", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "certificate")
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("--pfx-cert '/path/cert.pfx'", result["auth_string"])
+
+    def test_pem_cert_auth_nxc(self):
+        """Test PEM certificate auth string for nxc."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", pem_cert="/path/cert.pem", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "certificate")
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("--pem-cert '/path/cert.pem'", result["auth_string"])
+
+    # =====================================================================
+    # Edge Cases and Fallbacks
+    # =====================================================================
+
+    def test_no_auth_returns_placeholders(self):
+        """Test that missing auth returns placeholder values."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args()  # No credentials
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "none")
+        self.assertIn("<user>", result["credential_format"])
+        self.assertIn("<pass>", result["credential_format"])
+
+    def test_domain_from_cache(self):
+        """Test that domain is pulled from cache if not in args."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="pass")  # No domain
+        cache = self._make_cache(domain_info={"dns_domain": "cached.domain.local"})
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertIn("cached.domain.local", result["credential_format"])
+        self.assertEqual(result["domain"], "cached.domain.local")
+
+    def test_fallback_to_primary_credential(self):
+        """Test fallback to cache.primary_credential when args has no user."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        # Create mock credential
+        class MockCredential:
+            user = "cred_user"
+            password = "cred_pass"
+            hash = None
+            domain = "CRED_DOMAIN"
+            use_kcache = False
+            aes_key = None
+            kerberos = False
+            pfx_cert = None
+            pem_cert = None
+
+        args = self._make_args()  # Empty args
+        cache = self._make_cache(primary_credential=MockCredential())
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertIn("cred_user", result["auth_string"])
+        self.assertIn("cred_pass", result["auth_string"])
+        self.assertIn("CRED_DOMAIN", result["auth_string"])
+
+    def test_include_domain_false(self):
+        """Test include_domain=False excludes domain from user string."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="pass", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc", include_domain=False)
+
+        # Domain should not be in auth_string when include_domain=False
+        self.assertNotIn("-d 'CORP'", result["auth_string"])
+
+    def test_generic_fallback_tool(self):
+        """Test generic fallback for unknown tool names."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="secret", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="unknown_tool")
+
+        self.assertEqual(result["auth_type"], "password")
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("-p 'secret'", result["auth_string"])
+
+    def test_kerberos_flag_with_password(self):
+        """Test Kerberos flag combined with password auth."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="pass", kerberos=True, domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        # Should have password in credential format and -k flag
+        self.assertIn("pass", result["credential_format"])
+        self.assertIn("-k", result["auth_string"])
+
+    def test_kerberos_flag_with_password_nxc(self):
+        """Test Kerberos flag combined with password for nxc."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="pass", kerberos=True, domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="nxc")
+
+        self.assertEqual(result["auth_type"], "kerberos")
+        self.assertTrue(result["is_kerberos"])
+        self.assertIn("-u 'admin'", result["auth_string"])
+        self.assertIn("-p 'pass'", result["auth_string"])
+        self.assertIn("-k", result["auth_string"])
+
+    def test_result_dict_contains_all_expected_keys(self):
+        """Test that result dict always contains all expected keys."""
+        from nxc_enum.reporting.next_steps import get_external_tool_auth
+
+        args = self._make_args(user="admin", password="pass", domain="CORP")
+        cache = self._make_cache()
+
+        result = get_external_tool_auth(args, cache, tool="impacket")
+
+        expected_keys = [
+            "auth_string",
+            "credential_format",
+            "kerberos_hint",
+            "alt_auth_hint",
+            "auth_type",
+            "is_kerberos",
+            "user",
+            "domain",
+        ]
+        for key in expected_keys:
+            self.assertIn(key, result)
+
+
 if __name__ == "__main__":
     unittest.main()

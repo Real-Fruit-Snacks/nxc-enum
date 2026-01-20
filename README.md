@@ -166,9 +166,12 @@ HIGH PRIORITY (3)
   → LDAP signing not required
     LDAP relay to create machine account for RBCD attack
     $ ntlmrelayx.py -t ldap://10.0.0.1 --delegate-access
+    !!! AUTO-EXPLOIT: Auto-relays NTLM authentication
 ```
 
 **Credentials are auto-filled** from your input - commands are ready to copy-paste.
+
+**Auto-exploit warnings** appear when a suggested command uses modules that automatically exploit vulnerabilities (e.g., secretsdump, zerologon, ntlmrelayx). This helps distinguish between passive enumeration and active exploitation.
 
 ---
 

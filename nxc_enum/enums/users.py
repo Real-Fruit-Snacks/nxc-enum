@@ -225,6 +225,20 @@ def enum_users(args, cache):
     for key in notable_accounts:
         notable_accounts[key].extend(notable_from_rid.get(key, []))
 
+    # Apply --active-users filter if requested
+    filtered_count = 0
+    if getattr(args, "active_users", False) and users:
+        disabled_usernames = set(u.lower() for u in notable_accounts.get("disabled", []))
+        if disabled_usernames:
+            users_to_remove = [
+                username for username in users if username.lower() in disabled_usernames
+            ]
+            for username in users_to_remove:
+                del users[username]
+            filtered_count = len(users_to_remove)
+            if filtered_count > 0:
+                status(f"Filtered {filtered_count} disabled account(s)", "info")
+
     if users:
         status(f"Found {len(users)} user(s) total", "success")
         cache.user_count = len(users)

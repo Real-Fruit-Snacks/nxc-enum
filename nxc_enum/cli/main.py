@@ -65,6 +65,7 @@ from ..enums import (
     enum_av_multi,
     enum_bitlocker,
     enum_computers,
+    enum_custom_query,
     enum_dc_list,
     enum_delegation,
     enum_descriptions,
@@ -123,6 +124,36 @@ from ..validation.single import validate_credentials
 from .args import create_parser
 
 
+def _get_auth_type_from_args(args) -> str:
+    """Determine authentication type from command-line arguments.
+
+    Returns one of: 'password', 'hash', 'kerberos', 'certificate', 'anonymous', 'none'
+    """
+    # Check for Kerberos auth
+    if getattr(args, "use_kcache", False) or getattr(args, "aes_key", None):
+        return "kerberos"
+    if getattr(args, "kerberos", False):
+        return "kerberos"
+
+    # Check for certificate auth
+    if getattr(args, "pfx_cert", None) or getattr(args, "pem_cert", None):
+        return "certificate"
+
+    # Check for hash auth
+    if getattr(args, "hash", None):
+        return "hash"
+
+    # Check for password auth
+    if getattr(args, "password", None) is not None:
+        return "password"
+
+    # Check for anonymous
+    if not getattr(args, "user", None):
+        return "anonymous"
+
+    return "none"
+
+
 def _run_single_target(
     args, target: str, creds: list, smb_cache: dict | None = None
 ) -> TargetResult:
@@ -148,10 +179,19 @@ def _run_single_target(
     if smb_cache and target in smb_cache:
         # Use pre-computed validation from parallel pre-scan
         is_reachable, smb_info = smb_cache[target]
+    elif getattr(args, "no_smb", False):
+        # Skip SMB validation when --no-smb is set
+        status("Skipping SMB validation (--no-smb)", "info")
+        is_reachable, smb_info = True, {}
     else:
         # No cache - validate now
         status("Checking SMB reachability...", "info")
-        is_reachable, smb_info = validate_host_smb(target, timeout=args.timeout)
+        is_reachable, smb_info = validate_host_smb(
+            target,
+            timeout=args.timeout,
+            port=getattr(args, "port", None),
+            smb_timeout=getattr(args, "smb_timeout", None),
+        )
 
     if not is_reachable:
         status("Host not responding to SMB - skipping", "warning")
@@ -199,7 +239,13 @@ def _run_single_target(
     working_creds = list(creds)  # Copy to avoid modifying original
 
     # Probe for null/guest sessions (security finding)
-    anon_result = probe_anonymous_sessions(target, args.timeout, has_creds=has_creds)
+    anon_result = probe_anonymous_sessions(
+        target,
+        args.timeout,
+        has_creds=has_creds,
+        port=getattr(args, "port", None),
+        smb_timeout=getattr(args, "smb_timeout", None),
+    )
 
     # Store anonymous access findings in cache for reporting
     anon_findings = {
@@ -248,6 +294,27 @@ def _run_single_target(
     cache.timeout = args.timeout
     cache.anonymous_mode = anonymous_mode
     cache.anonymous_access = anon_findings
+    # Store network options for run_nxc calls
+    cache.port = getattr(args, "port", None)
+    cache.smb_timeout = getattr(args, "smb_timeout", None)
+    cache.ipv6 = getattr(args, "ipv6", False)
+    cache.dns_server = getattr(args, "dns_server", None)
+    cache.dns_tcp = getattr(args, "dns_tcp", False)
+
+    # Display network options in use (helps user understand what's being applied)
+    network_opts = []
+    if cache.port:
+        network_opts.append(f"port={cache.port}")
+    if cache.smb_timeout:
+        network_opts.append(f"smb-timeout={cache.smb_timeout}s")
+    if cache.ipv6:
+        network_opts.append("IPv6")
+    if cache.dns_server:
+        network_opts.append(f"dns={cache.dns_server}")
+    if cache.dns_tcp:
+        network_opts.append("dns-tcp")
+    if network_opts:
+        status(f"Network options: {', '.join(network_opts)}", "info")
 
     # Initialize multi_results for multi-cred mode
     multi_results = None
@@ -373,18 +440,28 @@ def _run_single_target(
                 output(c("LOCAL ADMIN CREDENTIALS", Colors.RED + Colors.BOLD))
                 output(f"{'-'*50}")
                 for cred in admin_creds:
-                    auth_type = "password" if cred.password else "hash"
-                    cred_str = cred.password if cred.password else cred.hash[:32] + "..."
-                    output(f"  {c('[ADMIN]', Colors.RED)} {cred.username}:{cred_str} ({auth_type})")
+                    auth_type = cred.auth_type()
+                    if cred.password:
+                        cred_str = cred.password
+                    elif cred.hash:
+                        cred_str = cred.hash[:32] + "..."
+                    else:
+                        cred_str = "N/A"
+                    output(f"  {c('[ADMIN]', Colors.RED)} {cred.user}:{cred_str} ({auth_type})")
                 output("")
 
             if std_creds:
                 output(c("STANDARD CREDENTIALS", Colors.GREEN))
                 output(f"{'-'*50}")
                 for cred in std_creds:
-                    auth_type = "password" if cred.password else "hash"
-                    cred_str = cred.password if cred.password else cred.hash[:32] + "..."
-                    output(f"  {cred.username}:{cred_str} ({auth_type})")
+                    auth_type = cred.auth_type()
+                    if cred.password:
+                        cred_str = cred.password
+                    elif cred.hash:
+                        cred_str = cred.hash[:32] + "..."
+                    else:
+                        cred_str = "N/A"
+                    output(f"  {cred.user}:{cred_str} ({auth_type})")
                 output("")
 
             # Summary
@@ -396,11 +473,11 @@ def _run_single_target(
         else:
             # Single credential
             cred = working_creds[0]
-            auth_type = "password" if cred.password else "hash"
+            auth_type = cred.auth_type()
             if cred.is_admin:
-                status(f"Valid: {cred.username} ({auth_type}) - LOCAL ADMIN!", "success")
+                status(f"Valid: {cred.user} ({auth_type}) - LOCAL ADMIN!", "success")
             else:
-                status(f"Valid: {cred.username} ({auth_type})", "success")
+                status(f"Valid: {cred.user} ({auth_type})", "success")
 
         output("")
         status(f"Completed in {elapsed:.2f}s")
@@ -445,6 +522,7 @@ def _run_single_target(
             args.rdp,
             args.ftp,
             args.nfs,
+            args.query,
         )
     )
 
@@ -459,7 +537,7 @@ def _run_single_target(
         # Phase 1.5: Service port pre-scan (determines which protocols are available)
         # This saves ~30-60 seconds per unreachable service during enumeration
         status("Pre-scanning service ports...", "info")
-        service_results = parallel_prescan_services(target)
+        service_results = parallel_prescan_services(target, ipv6=getattr(args, "ipv6", False))
         cache.apply_service_prescan(service_results)
 
         # Log service availability (helps user understand what will be skipped)
@@ -595,6 +673,11 @@ def _run_single_target(
             enum_ftp(args, cache)
         if args.nfs:
             enum_nfs(args, cache)
+        if args.query:
+            # Custom LDAP query requires cache priming for LDAP availability check
+            if not hasattr(cache, "ldap_available") or cache.ldap_available is None:
+                cache.prime_caches(target, cache.auth_args)
+            enum_custom_query(args, cache)
 
     # Add target to successfully enumerated targets list
     cache.copy_paste_data["targets"].add(target)
@@ -1090,7 +1173,9 @@ def main():
     use_prescan = (len(targets) > PRESCAN_THRESHOLD and not args.no_prescan) or args.discover_only
 
     if use_prescan:
-        status(f"Pre-scanning {len(targets)} targets for SMB (port 445)...", "info")
+        # Use custom port if specified, otherwise default to 445
+        prescan_port = getattr(args, "port", None) or 445
+        status(f"Pre-scanning {len(targets)} targets for SMB (port {prescan_port})...", "info")
 
         # Phase 1: Fast TCP port scan
         def port_progress(done: int, total: int) -> None:
@@ -1099,8 +1184,9 @@ def main():
 
         live_targets = parallel_port_prescan(
             targets,
-            port=445,
+            port=prescan_port,
             progress_callback=port_progress,
+            ipv6=getattr(args, "ipv6", False),
         )
 
         port_open_count = len(live_targets)  # Track for discovery stats
@@ -1130,6 +1216,8 @@ def main():
             live_targets,
             timeout=10,
             progress_callback=smb_progress,
+            port=getattr(args, "port", None),
+            smb_timeout=getattr(args, "smb_timeout", None),
         )
 
         # Filter to only reachable hosts (passed SMB validation)
@@ -1359,6 +1447,34 @@ def main():
         if multi_target_mode and multi_target_results:
             JSON_DATA.update(multi_target_results.to_json())
         JSON_DATA["elapsed_time"] = elapsed
+
+        # Add scan metadata to JSON
+        JSON_DATA["scan_metadata"] = {
+            # Authentication info
+            "auth_type": _get_auth_type_from_args(args),
+            # Network options
+            "network_options": {
+                "port": getattr(args, "port", None),
+                "smb_timeout": getattr(args, "smb_timeout", None),
+                "ipv6": getattr(args, "ipv6", False),
+                "dns_server": getattr(args, "dns_server", None),
+                "dns_tcp": getattr(args, "dns_tcp", False),
+            },
+            # Filter options
+            "filters": {
+                "active_users": getattr(args, "active_users", False),
+                "shares_filter": getattr(args, "shares_filter", None),
+                "local_groups_filter": getattr(args, "local_groups_filter", None),
+            },
+            # Spray options
+            "spray_options": {
+                "continue_on_success": getattr(args, "continue_on_success", False),
+                "jitter": getattr(args, "jitter", None),
+                "fail_limit": getattr(args, "fail_limit", None),
+                "ufail_limit": getattr(args, "ufail_limit", None),
+                "gfail_limit": getattr(args, "gfail_limit", None),
+            },
+        }
 
     # Write output to file if specified
     if args.output:

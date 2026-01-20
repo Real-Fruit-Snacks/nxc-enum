@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Auto-Exploit Warnings** - Next Steps commands that use auto-exploitation modules are now flagged
+  - Displays `!!! AUTO-EXPLOIT:` warning with description when suggesting exploit modules
+  - Covers NetExec modules: printnightmare, zerologon, petitpotam, nopac, smbghost, ms17-010,
+    dfscoerce, shadowcoerce, handlekatz, nanodump, procdump, lsassy, mimikatz, met_inject,
+    shellcode_inject, empire_exec
+  - Covers Impacket tools: secretsdump, ntlmrelayx, getST.py
+  - JSON output includes `auto_exploit` (boolean) and `auto_exploit_details` (array) for each step
+  - Helps users distinguish passive enumeration from active exploitation
+
+### Changed
+- **Next Steps Authentication** - All 16 enumeration modules now use `get_external_tool_auth()`
+  - Properly handles all auth types: password, hash, Kerberos (kcache, aesKey), certificates
+  - Updated modules: kerberoastable, asreproast, laps, pwd_not_required, gmsa, gpp_password,
+    sccm, ldap_signing, mssql, rdp, ioxid, policies, shares, computers, os_info, printers
+  - Next Steps commands now work correctly with `--use-kcache`, `--aesKey`, `--pfx-cert`, etc.
+
 ## [1.8.0] - 2025-01-19
 
 ### Added

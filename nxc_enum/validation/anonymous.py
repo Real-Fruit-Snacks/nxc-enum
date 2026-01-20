@@ -21,7 +21,12 @@ class AnonymousSessionResult:
     session_type: Optional[str] = None  # "null", "guest", or None
 
 
-def probe_null_session(target: str, timeout: int) -> tuple[bool, str, str]:
+def probe_null_session(
+    target: str,
+    timeout: int,
+    port: int | None = None,
+    smb_timeout: int | None = None,
+) -> tuple[bool, str, str]:
     """Probe for null session access.
 
     Uses: nxc smb <target> -u '' -p ''
@@ -29,12 +34,14 @@ def probe_null_session(target: str, timeout: int) -> tuple[bool, str, str]:
     Args:
         target: Target IP or hostname
         timeout: Command timeout in seconds
+        port: Custom SMB port (default: 445)
+        smb_timeout: SMB-specific timeout
 
     Returns:
         Tuple of (success, stdout, stderr)
     """
     cmd_args = ["smb", target, "-u", "", "-p", ""]
-    rc, stdout, stderr = run_nxc(cmd_args, timeout)
+    rc, stdout, stderr = run_nxc(cmd_args, timeout, port=port, smb_timeout=smb_timeout)
     debug_nxc(cmd_args, stdout, stderr, "Null Session Probe")
 
     # Check for successful connection
@@ -44,7 +51,12 @@ def probe_null_session(target: str, timeout: int) -> tuple[bool, str, str]:
     return success, stdout, stderr
 
 
-def probe_guest_session(target: str, timeout: int) -> tuple[bool, str, str]:
+def probe_guest_session(
+    target: str,
+    timeout: int,
+    port: int | None = None,
+    smb_timeout: int | None = None,
+) -> tuple[bool, str, str]:
     """Probe for guest session access.
 
     Uses: nxc smb <target> -u 'Guest' -p ''
@@ -52,12 +64,14 @@ def probe_guest_session(target: str, timeout: int) -> tuple[bool, str, str]:
     Args:
         target: Target IP or hostname
         timeout: Command timeout in seconds
+        port: Custom SMB port (default: 445)
+        smb_timeout: SMB-specific timeout
 
     Returns:
         Tuple of (success, stdout, stderr)
     """
     cmd_args = ["smb", target, "-u", "Guest", "-p", ""]
-    rc, stdout, stderr = run_nxc(cmd_args, timeout)
+    rc, stdout, stderr = run_nxc(cmd_args, timeout, port=port, smb_timeout=smb_timeout)
     debug_nxc(cmd_args, stdout, stderr, "Guest Session Probe")
 
     # Check for successful connection - guest may show [+] with (Guest) indicator
@@ -67,7 +81,11 @@ def probe_guest_session(target: str, timeout: int) -> tuple[bool, str, str]:
     return success, stdout, stderr
 
 
-def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str, bool]:
+def probe_ldap_anonymous(
+    target: str,
+    timeout: int,
+    port: int | None = None,
+) -> tuple[bool, str, str, bool]:
     """Probe for LDAP anonymous bind access.
 
     Uses: nxc ldap <target> -u '' -p ''
@@ -75,6 +93,7 @@ def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str, boo
     Args:
         target: Target IP or hostname
         timeout: Command timeout in seconds
+        port: Custom LDAP port (default: 389)
 
     Returns:
         Tuple of (success, stdout, stderr, connection_failed)
@@ -82,7 +101,8 @@ def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str, boo
         - connection_failed: True if LDAP service itself is unreachable (not a DC)
     """
     cmd_args = ["ldap", target, "-u", "", "-p", ""]
-    rc, stdout, stderr = run_nxc(cmd_args, timeout)
+    # Note: LDAP doesn't use smb_timeout, but we can pass port for custom LDAP port
+    rc, stdout, stderr = run_nxc(cmd_args, timeout, port=port)
     debug_nxc(cmd_args, stdout, stderr, "LDAP Anonymous Bind Probe")
 
     # Check for successful LDAP connection
@@ -114,7 +134,12 @@ def probe_ldap_anonymous(target: str, timeout: int) -> tuple[bool, str, str, boo
     return success, stdout, stderr, has_connection_failure
 
 
-def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
+def check_anonymous_access(
+    target: str,
+    timeout: int,
+    port: int | None = None,
+    smb_timeout: int | None = None,
+) -> AnonymousSessionResult:
     """Check for anonymous access without detailed output (used when creds provided).
 
     Silently probes for null, guest, and LDAP anonymous sessions and returns results.
@@ -123,6 +148,8 @@ def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
     Args:
         target: Target IP or hostname
         timeout: Command timeout in seconds
+        port: Custom SMB port (default: 445)
+        smb_timeout: SMB-specific timeout
 
     Returns:
         AnonymousSessionResult with findings
@@ -130,7 +157,7 @@ def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
     result = AnonymousSessionResult()
 
     # Try null session (SMB)
-    null_success, _, _ = probe_null_session(target, timeout)
+    null_success, _, _ = probe_null_session(target, timeout, port=port, smb_timeout=smb_timeout)
     if null_success:
         result.null_success = True
         result.session_type = "null"
@@ -143,7 +170,7 @@ def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
         )
 
     # Try guest session (SMB)
-    guest_success, _, _ = probe_guest_session(target, timeout)
+    guest_success, _, _ = probe_guest_session(target, timeout, port=port, smb_timeout=smb_timeout)
     if guest_success:
         result.guest_success = True
         if not result.session_type:
@@ -167,7 +194,11 @@ def check_anonymous_access(target: str, timeout: int) -> AnonymousSessionResult:
 
 
 def probe_anonymous_sessions(
-    target: str, timeout: int, has_creds: bool = False
+    target: str,
+    timeout: int,
+    has_creds: bool = False,
+    port: int | None = None,
+    smb_timeout: int | None = None,
 ) -> AnonymousSessionResult:
     """Probe for anonymous access (null session, guest session, LDAP anonymous).
 
@@ -180,6 +211,8 @@ def probe_anonymous_sessions(
         target: Target IP or hostname
         timeout: Command timeout in seconds
         has_creds: If True, we have credentials so just report findings (don't exit)
+        port: Custom SMB port (default: 445)
+        smb_timeout: SMB-specific timeout
 
     Returns:
         AnonymousSessionResult with working credential if found
@@ -190,7 +223,9 @@ def probe_anonymous_sessions(
 
     # SMB Null Session
     status("Probing SMB null session...", "info")
-    null_success, null_stdout, null_stderr = probe_null_session(target, timeout)
+    null_success, null_stdout, null_stderr = probe_null_session(
+        target, timeout, port=port, smb_timeout=smb_timeout
+    )
 
     if null_success:
         result.null_success = True
@@ -215,7 +250,9 @@ def probe_anonymous_sessions(
 
     # SMB Guest Session
     status("Probing SMB guest session...", "info")
-    guest_success, guest_stdout, guest_stderr = probe_guest_session(target, timeout)
+    guest_success, guest_stdout, guest_stderr = probe_guest_session(
+        target, timeout, port=port, smb_timeout=smb_timeout
+    )
 
     if guest_success:
         result.guest_success = True

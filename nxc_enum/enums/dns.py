@@ -8,6 +8,7 @@ It does NOT execute WMI queries on the target.
 
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, output, print_section, status
+from ..reporting.next_steps import get_external_tool_auth
 
 
 def enum_dns(args, cache):
@@ -34,14 +35,10 @@ def enum_dns(args, cache):
     domain_info = getattr(cache, "domain_info", {})
     dns_domain = domain_info.get("dns_domain", "<domain>")
 
-    # Build auth string for recommendations
-    if args.user:
-        user_str = args.user
-        if args.domain:
-            user_str = f"{args.domain}\\{args.user}"
-        auth_str = f"-u '{user_str}' -p '<password>'"
-    else:
-        auth_str = "-u '<domain>\\<user>' -p '<password>'"
+    # Build auth strings for recommendations using the helper
+    adidns_auth = get_external_tool_auth(args, cache, tool="adidnsdump")
+    impacket_auth = get_external_tool_auth(args, cache, tool="impacket")
+    nxc_auth_info = get_external_tool_auth(args, cache, tool="nxc")
 
     status("Checking DNS enumeration options...")
     output("")
@@ -60,27 +57,40 @@ def enum_dns(args, cache):
 
         # adidnsdump - best option for LDAP-based DNS enum
         output(c("[*] Dump all DNS records via LDAP (adidnsdump):", Colors.CYAN))
-        output(f"    adidnsdump {auth_str} --dns-tcp {target}")
+        output(f"    adidnsdump {adidns_auth['auth_string']} --dns-tcp {target}")
+        if adidns_auth["kerberos_hint"]:
+            output(f"    {adidns_auth['kerberos_hint']}")
+        elif adidns_auth["alt_auth_hint"]:
+            output(f"    {adidns_auth['alt_auth_hint']}")
         output("")
 
         output(c("[*] Dump specific zone:", Colors.CYAN))
-        output(f"    adidnsdump {auth_str} --dns-tcp -z {dns_domain} {target}")
+        output(f"    adidnsdump {adidns_auth['auth_string']} --dns-tcp -z {dns_domain} {target}")
         output("")
 
         output(c("[*] Include tombstoned (deleted) records:", Colors.CYAN))
+        auth_str = adidns_auth["auth_string"]
         output(f"    adidnsdump {auth_str} --dns-tcp --include-tombstoned {target}")
         output("")
 
-        # dnstool.py from krbrelayx
+        # dnstool.py from krbrelayx (impacket-style auth)
         output(c("[*] Query specific record (dnstool.py):", Colors.CYAN))
-        output(f"    dnstool.py -u '{dns_domain}\\<user>' -p '<password>' {target} -r '<record>'")
+        dnstool_cred = impacket_auth["credential_format"]
+        dnstool_flags = impacket_auth["auth_string"]
+        if dnstool_flags:
+            output(f"    dnstool.py {dnstool_flags} {dnstool_cred} {target} -r '<record>'")
+        else:
+            output(f"    dnstool.py {dnstool_cred} {target} -r '<record>'")
         output("")
 
         # Add to next steps
+        dns_desc = "Dump AD-integrated DNS records via LDAP"
+        if adidns_auth["alt_auth_hint"]:
+            dns_desc += adidns_auth["alt_auth_hint"]
         cache.add_next_step(
             finding="LDAP available for DNS enumeration",
-            command=f"adidnsdump {auth_str} --dns-tcp {target}",
-            description="Dump AD-integrated DNS records via LDAP",
+            command=f"adidnsdump {adidns_auth['auth_string']} --dns-tcp {target}",
+            description=dns_desc,
             priority="medium",
         )
 
@@ -127,21 +137,11 @@ def enum_dns(args, cache):
     output(f"{'-'*60}")
     output("")
     output(c("[*] NetExec enum_dns module (requires admin, uses WMI):", Colors.YELLOW))
-
-    if args.user:
-        nxc_auth = f"-u '{args.user}'"
-        if args.password:
-            nxc_auth += " -p '<password>'"
-        elif args.hash:
-            nxc_auth += " -H '<hash>'"
-        else:
-            nxc_auth += " -p '<password>'"
-        if args.domain:
-            nxc_auth += f" -d '{args.domain}'"
-    else:
-        nxc_auth = "-u '<user>' -p '<password>'"
-
-    output(f"    nxc smb {target} {nxc_auth} -M enum_dns")
+    output(f"    nxc smb {target} {nxc_auth_info['auth_string']} -M enum_dns")
+    if nxc_auth_info["kerberos_hint"]:
+        output(f"    {nxc_auth_info['kerberos_hint']}")
+    elif nxc_auth_info["alt_auth_hint"]:
+        output(f"    {nxc_auth_info['alt_auth_hint']}")
     output("")
 
     # Store empty results since we don't execute anything

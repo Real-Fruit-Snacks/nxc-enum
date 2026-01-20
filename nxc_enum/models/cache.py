@@ -60,6 +60,12 @@ class EnumCache:
         self.primary_credential = None  # Primary Credential object for command substitution
         self.target: Optional[str] = None
         self.timeout: int = DEFAULT_COMMAND_TIMEOUT
+        # Network options (set from args in main.py)
+        self.port: Optional[int] = None  # Custom SMB port (default: 445)
+        self.smb_timeout: Optional[int] = None  # SMB-specific timeout
+        self.ipv6: bool = False  # Use IPv6 for connections
+        self.dns_server: Optional[str] = None  # Custom DNS server
+        self.dns_tcp: bool = False  # Use TCP for DNS queries
         self.domain_info = {}
         self.smb_info = {}
         self.policy_info = {}
@@ -253,6 +259,8 @@ class EnumCache:
             "weak_pso_groups": set(),
             "ioxid_addresses": set(),
             "pivot_ips": set(),
+            # Custom query results (sAMAccountName values from --query)
+            "custom_query_names": set(),
         }
 
     def add_next_step(
@@ -275,6 +283,47 @@ class EnumCache:
             }
         )
 
+    def get_dns_args(self) -> list:
+        """Build DNS-related arguments for nxc commands.
+
+        Returns:
+            List of DNS arguments (e.g., ["--dns-server", "10.0.0.1", "--dns-tcp"])
+        """
+        dns_args = []
+        if self.dns_server:
+            dns_args.extend(["--dns-server", self.dns_server])
+        if self.dns_tcp:
+            dns_args.append("--dns-tcp")
+        return dns_args
+
+    def run_nxc_cached(self, args: list, cache_attr: str | None = None) -> tuple[int, str, str]:
+        """Run nxc command with cache's network options applied.
+
+        This helper method automatically applies port, smb_timeout, and DNS options
+        from the cache configuration.
+
+        Args:
+            args: Command arguments to pass to nxc
+            cache_attr: Optional attribute name to cache the result
+
+        Returns:
+            Tuple of (return_code, stdout, stderr)
+        """
+        # Add DNS arguments if configured
+        full_args = args + self.get_dns_args()
+
+        result = run_nxc(
+            full_args,
+            self.timeout,
+            port=self.port,
+            smb_timeout=self.smb_timeout,
+        )
+
+        if cache_attr:
+            setattr(self, cache_attr, result)
+
+        return result
+
     def apply_service_prescan(self, prescan_results: dict) -> None:
         """Apply service port pre-scan results to cache flags.
 
@@ -293,7 +342,7 @@ class EnumCache:
         """Get cached or fresh SMB basic info."""
         if self.smb_basic is None:
             cmd_args = ["smb", target] + auth
-            self.smb_basic = run_nxc(cmd_args, self.timeout)
+            self.smb_basic = self.run_nxc_cached(cmd_args)
             debug_nxc(cmd_args, self.smb_basic[1], self.smb_basic[2], "SMB Basic")
         return self.smb_basic
 
@@ -301,7 +350,7 @@ class EnumCache:
         """Get cached or fresh RID brute results."""
         if self.rid_brute is None:
             cmd_args = ["smb", target] + auth + ["--rid-brute"]
-            self.rid_brute = run_nxc(cmd_args, self.timeout)
+            self.rid_brute = self.run_nxc_cached(cmd_args)
             debug_nxc(cmd_args, self.rid_brute[1], self.rid_brute[2], "RID Brute")
         return self.rid_brute
 
@@ -309,7 +358,7 @@ class EnumCache:
         """Get cached or fresh LDAP basic info."""
         if self.ldap_basic is None:
             cmd_args = ["ldap", target] + auth
-            self.ldap_basic = run_nxc(cmd_args, self.timeout)
+            self.ldap_basic = self.run_nxc_cached(cmd_args)
             debug_nxc(cmd_args, self.ldap_basic[1], self.ldap_basic[2], "LDAP Basic")
         return self.ldap_basic
 
@@ -701,7 +750,9 @@ class EnumCache:
         }
 
         def fetch_query(args):
-            return run_nxc(args, self.timeout)
+            # Add DNS args to each query
+            full_args = args + self.get_dns_args()
+            return run_nxc(full_args, self.timeout, port=self.port, smb_timeout=self.smb_timeout)
 
         # Store results in a dict
         results = {}

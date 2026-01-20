@@ -11,6 +11,7 @@ import re
 from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
+from ..reporting.next_steps import get_external_tool_auth
 
 # Patterns to detect LDAP signing status from nxc output
 RE_SIGNING_NOT_REQUIRED = re.compile(
@@ -104,16 +105,8 @@ def enum_ldap_signing(args, cache):
         output(c("      Vulnerable to LDAP relay attacks", Colors.RED))
 
         # Build auth hint
-        if args.user:
-            auth_hint = f"-u '{args.user}'"
-            if args.password:
-                auth_hint += f" -p '{args.password}'"
-            elif args.hash:
-                auth_hint += f" -H '{args.hash}'"
-            else:
-                auth_hint += " -p '<password>'"
-        else:
-            auth_hint = "-u <user> -p <pass>"
+        auth_info = get_external_tool_auth(args, cache, tool="nxc")
+        auth_hint = auth_info["auth_string"]
 
         cache.add_next_step(
             finding="LDAP signing not required",

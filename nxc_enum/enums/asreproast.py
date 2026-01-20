@@ -14,6 +14,7 @@ from ..core.constants import RE_LDAP_CN
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # UAC flag for DONT_REQUIRE_PREAUTH = 0x400000 = 4194304
 # LDAP filter uses bitwise AND to check if this flag is set
@@ -154,17 +155,9 @@ def enum_asreproast(args, cache):
         output(c("  [!] AS-REP roasting obtains hashes for offline password cracking.", Colors.RED))
         output("")
 
-        # Build auth hint for command - can use any valid creds or even anonymous in some cases
-        if args.user:
-            auth_hint = f"-u '{args.user}'"
-            if args.password:
-                auth_hint += f" -p '{args.password}'"
-            elif args.hash:
-                auth_hint += f" -H '{args.hash}'"
-            else:
-                auth_hint += " -p '<password>'"
-        else:
-            auth_hint = "-u <user> -p <pass>"
+        # Build auth hint for command using auth helper
+        auth_info = get_external_tool_auth(args, cache, tool="nxc")
+        auth_hint = auth_info["auth_string"]
 
         # Add next step recommendation - this is the actual attack command
         usernames = [a["username"] for a in asreproastable]

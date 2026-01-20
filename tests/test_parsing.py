@@ -323,6 +323,218 @@ class TestModuleArguments(unittest.TestCase):
         self.assertIsNone(args.query_attrs)
 
 
+class TestCustomQueryArguments(unittest.TestCase):
+    """Test custom LDAP query command line arguments."""
+
+    def setUp(self):
+        """Import parser for each test."""
+        from nxc_enum.cli.args import create_parser
+
+        self.parser = create_parser()
+
+    def test_query_simple_filter(self):
+        """Test --query with simple LDAP filter."""
+        args = self.parser.parse_args(["target", "--query", "(objectClass=user)"])
+        self.assertEqual(args.query, "(objectClass=user)")
+
+    def test_query_complex_filter(self):
+        """Test --query with complex LDAP filter."""
+        filter_str = "(&(objectClass=user)(!(userAccountControl:1.2.840.113556.1.4.803:=2)))"
+        args = self.parser.parse_args(["target", "--query", filter_str])
+        self.assertEqual(args.query, filter_str)
+
+    def test_query_filter_with_spaces(self):
+        """Test --query with filter containing spaces in description search."""
+        filter_str = "(description=*password*)"
+        args = self.parser.parse_args(["target", "--query", filter_str])
+        self.assertEqual(args.query, filter_str)
+
+    def test_query_filter_with_wildcards(self):
+        """Test --query with wildcard filter."""
+        filter_str = "(sAMAccountName=svc_*)"
+        args = self.parser.parse_args(["target", "--query", filter_str])
+        self.assertEqual(args.query, filter_str)
+
+    def test_query_attrs_comma_separated(self):
+        """Test --query-attrs with comma-separated attributes."""
+        args = self.parser.parse_args(
+            ["target", "--query", "(objectClass=user)", "--query-attrs", "cn,mail,description"]
+        )
+        self.assertEqual(args.query_attrs, "cn,mail,description")
+
+    def test_query_attrs_single_attribute(self):
+        """Test --query-attrs with single attribute."""
+        args = self.parser.parse_args(
+            ["target", "--query", "(objectClass=user)", "--query-attrs", "sAMAccountName"]
+        )
+        self.assertEqual(args.query_attrs, "sAMAccountName")
+
+    def test_query_attrs_many_attributes(self):
+        """Test --query-attrs with many attributes."""
+        attrs = "cn,sAMAccountName,mail,description,memberOf,userAccountControl"
+        args = self.parser.parse_args(
+            ["target", "--query", "(objectClass=user)", "--query-attrs", attrs]
+        )
+        self.assertEqual(args.query_attrs, attrs)
+
+    def test_query_default_none(self):
+        """Test --query defaults to None when not specified."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.query)
+
+    def test_query_attrs_default_none(self):
+        """Test --query-attrs defaults to None when not specified."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.query_attrs)
+
+    def test_query_attrs_without_query(self):
+        """Test --query-attrs can be specified without --query (parser allows it)."""
+        # Parser allows it, but enum_custom_query will handle the validation
+        args = self.parser.parse_args(["target", "--query-attrs", "cn,mail"])
+        self.assertEqual(args.query_attrs, "cn,mail")
+        self.assertIsNone(args.query)
+
+    def test_query_with_credentials(self):
+        """Test --query combined with credential arguments."""
+        args = self.parser.parse_args(
+            [
+                "target",
+                "-u",
+                "admin",
+                "-p",
+                "password",
+                "-d",
+                "CORP",
+                "--query",
+                "(objectClass=user)",
+            ]
+        )
+        self.assertEqual(args.query, "(objectClass=user)")
+        self.assertEqual(args.user, "admin")
+        self.assertEqual(args.password, "password")
+        self.assertEqual(args.domain, "CORP")
+
+
+class TestCustomQueryParsing(unittest.TestCase):
+    """Test custom LDAP query output parsing."""
+
+    def setUp(self):
+        """Import parsing function."""
+        from nxc_enum.enums.custom_query import _parse_query_output
+
+        self.parse_query_output = _parse_query_output
+
+    def test_parse_single_object(self):
+        """Test parsing a single LDAP object response."""
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=John Doe,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 sAMAccountName john.doe
+LDAP 10.0.0.1 389 DC01 mail john.doe@corp.local"""
+
+        results = self.parse_query_output(stdout)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["dn"], "CN=John Doe,CN=Users,DC=corp,DC=local")
+        self.assertEqual(results[0]["attributes"]["sAMAccountName"], "john.doe")
+        self.assertEqual(results[0]["attributes"]["mail"], "john.doe@corp.local")
+
+    def test_parse_multiple_objects(self):
+        """Test parsing multiple LDAP objects."""
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=User1,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 cn User1
+LDAP 10.0.0.1 389 DC01 Response for object: CN=User2,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 cn User2"""
+
+        results = self.parse_query_output(stdout)
+
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0]["dn"], "CN=User1,CN=Users,DC=corp,DC=local")
+        self.assertEqual(results[0]["attributes"]["cn"], "User1")
+        self.assertEqual(results[1]["dn"], "CN=User2,CN=Users,DC=corp,DC=local")
+        self.assertEqual(results[1]["attributes"]["cn"], "User2")
+
+    def test_parse_empty_output(self):
+        """Test parsing empty output returns empty list."""
+        results = self.parse_query_output("")
+        self.assertEqual(results, [])
+
+    def test_parse_no_results(self):
+        """Test parsing output with no LDAP objects."""
+        stdout = """LDAP 10.0.0.1 389 DC01 [*] Searching for objects
+LDAP 10.0.0.1 389 DC01 [*] No objects found"""
+
+        results = self.parse_query_output(stdout)
+        self.assertEqual(results, [])
+
+    def test_parse_with_attribute_filter(self):
+        """Test parsing with attribute filtering."""
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=User1,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 cn User1
+LDAP 10.0.0.1 389 DC01 mail user1@corp.local
+LDAP 10.0.0.1 389 DC01 description Some description"""
+
+        # Request only cn and mail, should filter out description
+        results = self.parse_query_output(stdout, requested_attrs=["cn", "mail"])
+
+        self.assertEqual(len(results), 1)
+        self.assertIn("cn", results[0]["attributes"])
+        self.assertIn("mail", results[0]["attributes"])
+        self.assertNotIn("description", results[0]["attributes"])
+
+    def test_parse_case_insensitive_attr_filter(self):
+        """Test attribute filtering is case-insensitive."""
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=User1,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 sAMAccountName user1"""
+
+        # Request with different case
+        results = self.parse_query_output(stdout, requested_attrs=["samaccountname"])
+
+        self.assertEqual(len(results), 1)
+        self.assertIn("sAMAccountName", results[0]["attributes"])
+
+    def test_parse_multi_valued_attribute(self):
+        """Test parsing multi-valued attributes."""
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=User1,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 memberOf CN=Group1,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 memberOf CN=Group2,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 memberOf CN=Group3,DC=corp,DC=local"""
+
+        results = self.parse_query_output(stdout)
+
+        self.assertEqual(len(results), 1)
+        memberOf = results[0]["attributes"]["memberOf"]
+        self.assertIsInstance(memberOf, list)
+        self.assertEqual(len(memberOf), 3)
+        self.assertIn("CN=Group1,DC=corp,DC=local", memberOf)
+        self.assertIn("CN=Group2,DC=corp,DC=local", memberOf)
+        self.assertIn("CN=Group3,DC=corp,DC=local", memberOf)
+
+    def test_parse_attribute_with_colon_format(self):
+        """Test parsing attributes with colon separator format."""
+        stdout = """LDAP 10.0.0.1 389 DC01 Response for object: CN=User1,CN=Users,DC=corp,DC=local
+LDAP 10.0.0.1 389 DC01 cn: User1
+LDAP 10.0.0.1 389 DC01 mail: user1@corp.local"""
+
+        results = self.parse_query_output(stdout)
+
+        self.assertEqual(len(results), 1)
+        # The regex should handle both space and colon separators
+        self.assertEqual(results[0]["attributes"]["cn"], "User1")
+        self.assertEqual(results[0]["attributes"]["mail"], "user1@corp.local")
+
+    def test_parse_whitespace_handling(self):
+        """Test parsing handles extra whitespace correctly."""
+        stdout = """
+LDAP 10.0.0.1 389 DC01 Response for object: CN=User1,CN=Users,DC=corp,DC=local
+
+LDAP 10.0.0.1 389 DC01 cn User1
+
+"""
+        results = self.parse_query_output(stdout)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["attributes"]["cn"], "User1")
+
+
 class TestNetworkArguments(unittest.TestCase):
     """Test network and protocol-related command line arguments."""
 
@@ -417,6 +629,415 @@ class TestNetworkArguments(unittest.TestCase):
         self.assertTrue(args.ipv6)
         self.assertEqual(args.dns_server, "192.168.1.1")
         self.assertTrue(args.dns_tcp)
+
+
+class TestRunNxcPortParameter(unittest.TestCase):
+    """Test that run_nxc correctly handles the port parameter."""
+
+    def test_run_nxc_adds_port_to_command(self):
+        """Test that port parameter adds --port to nxc command."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.subprocess.run") as mock_run:
+            # Create a mock result with required attributes
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+
+            from nxc_enum.core.runner import run_nxc
+
+            run_nxc(["smb", "10.0.0.1"], timeout=30, port=139)
+
+            # Check that subprocess.run was called
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+
+            # Verify --port 139 is in the command
+            self.assertIn("--port", call_args)
+            port_idx = call_args.index("--port")
+            self.assertEqual(call_args[port_idx + 1], "139")
+
+    def test_run_nxc_does_not_add_port_when_none(self):
+        """Test that no --port is added when port parameter is None."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+
+            from nxc_enum.core.runner import run_nxc
+
+            run_nxc(["smb", "10.0.0.1"], timeout=30, port=None)
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+
+            # Verify --port is NOT in the command
+            self.assertNotIn("--port", call_args)
+
+    def test_run_nxc_does_not_duplicate_port(self):
+        """Test that --port is not added when already present in args."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+
+            from nxc_enum.core.runner import run_nxc
+
+            # Pass --port in args, also pass port parameter
+            run_nxc(["smb", "10.0.0.1", "--port", "445"], timeout=30, port=139)
+
+            mock_run.assert_called_once()
+            call_args = mock_run.call_args[0][0]
+
+            # Count occurrences of --port
+            port_count = call_args.count("--port")
+            self.assertEqual(port_count, 1, "Should not duplicate --port in command")
+
+
+class TestRunNxcSmbTimeout(unittest.TestCase):
+    """Test that run_nxc correctly handles the smb_timeout parameter."""
+
+    def test_run_nxc_uses_smb_timeout_when_provided(self):
+        """Test that smb_timeout overrides the default timeout."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+
+            from nxc_enum.core.runner import run_nxc
+
+            run_nxc(["smb", "10.0.0.1"], timeout=60, smb_timeout=120)
+
+            mock_run.assert_called_once()
+            # Check the timeout keyword argument
+            call_kwargs = mock_run.call_args[1]
+            self.assertEqual(call_kwargs["timeout"], 120, "Should use smb_timeout value")
+
+    def test_run_nxc_uses_general_timeout_when_smb_timeout_none(self):
+        """Test that general timeout is used when smb_timeout is None."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+
+            from nxc_enum.core.runner import run_nxc
+
+            run_nxc(["smb", "10.0.0.1"], timeout=45, smb_timeout=None)
+
+            mock_run.assert_called_once()
+            call_kwargs = mock_run.call_args[1]
+            self.assertEqual(call_kwargs["timeout"], 45, "Should use general timeout value")
+
+    def test_run_nxc_smb_timeout_zero_uses_zero(self):
+        """Test that smb_timeout=0 is used (not treated as falsy)."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stdout = ""
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+
+            from nxc_enum.core.runner import run_nxc
+
+            # smb_timeout=0 should be used as-is (not default to timeout)
+            run_nxc(["smb", "10.0.0.1"], timeout=60, smb_timeout=0)
+
+            mock_run.assert_called_once()
+            call_kwargs = mock_run.call_args[1]
+            # Note: 0 is falsy but explicit, so smb_timeout should be checked with `is not None`
+            self.assertEqual(call_kwargs["timeout"], 0, "Should use smb_timeout=0")
+
+
+class TestCheckPortIPv6(unittest.TestCase):
+    """Test that check_port correctly handles the ipv6 parameter."""
+
+    def test_check_port_uses_af_inet_by_default(self):
+        """Test that check_port uses AF_INET (IPv4) by default."""
+        import socket
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.socket.socket") as mock_socket_class:
+            mock_socket = MagicMock()
+            mock_socket.connect_ex.return_value = 0
+            mock_socket_class.return_value = mock_socket
+
+            from nxc_enum.core.runner import check_port
+
+            result = check_port("10.0.0.1", 445, timeout=1.0, ipv6=False)
+
+            # Should use AF_INET
+            mock_socket_class.assert_called_once_with(socket.AF_INET, socket.SOCK_STREAM)
+            self.assertTrue(result)
+
+    def test_check_port_uses_af_inet6_when_ipv6_true(self):
+        """Test that check_port uses AF_INET6 when ipv6=True."""
+        import socket
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.socket.socket") as mock_socket_class:
+            mock_socket = MagicMock()
+            mock_socket.connect_ex.return_value = 0
+            mock_socket_class.return_value = mock_socket
+
+            from nxc_enum.core.runner import check_port
+
+            result = check_port("::1", 445, timeout=1.0, ipv6=True)
+
+            # Should use AF_INET6
+            mock_socket_class.assert_called_once_with(socket.AF_INET6, socket.SOCK_STREAM)
+            self.assertTrue(result)
+
+    def test_check_port_returns_false_on_connection_failure(self):
+        """Test that check_port returns False when connection fails."""
+        from unittest.mock import MagicMock, patch
+
+        with patch("nxc_enum.core.runner.socket.socket") as mock_socket_class:
+            mock_socket = MagicMock()
+            # Non-zero return means connection failed
+            mock_socket.connect_ex.return_value = 111
+            mock_socket_class.return_value = mock_socket
+
+            from nxc_enum.core.runner import check_port
+
+            result = check_port("10.0.0.1", 445, timeout=1.0)
+
+            self.assertFalse(result)
+
+    def test_check_port_returns_false_on_socket_error(self):
+        """Test that check_port returns False on socket error."""
+        import socket
+        from unittest.mock import patch
+
+        with patch("nxc_enum.core.runner.socket.socket") as mock_socket_class:
+            mock_socket_class.side_effect = socket.error("Connection error")
+
+            from nxc_enum.core.runner import check_port
+
+            result = check_port("10.0.0.1", 445, timeout=1.0)
+
+            self.assertFalse(result)
+
+
+class TestEnumCacheGetDnsArgs(unittest.TestCase):
+    """Test EnumCache.get_dns_args() method for building DNS arguments."""
+
+    def test_get_dns_args_empty_when_no_options(self):
+        """Test that get_dns_args returns empty list when no DNS options set."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+
+        result = cache.get_dns_args()
+
+        self.assertEqual(result, [])
+
+    def test_get_dns_args_with_dns_server(self):
+        """Test that get_dns_args includes --dns-server when set."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.dns_server = "10.0.0.1"
+
+        result = cache.get_dns_args()
+
+        self.assertEqual(result, ["--dns-server", "10.0.0.1"])
+
+    def test_get_dns_args_with_dns_tcp(self):
+        """Test that get_dns_args includes --dns-tcp when set."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.dns_tcp = True
+
+        result = cache.get_dns_args()
+
+        self.assertEqual(result, ["--dns-tcp"])
+
+    def test_get_dns_args_with_both_options(self):
+        """Test that get_dns_args includes both DNS options when set."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.dns_server = "8.8.8.8"
+        cache.dns_tcp = True
+
+        result = cache.get_dns_args()
+
+        self.assertEqual(result, ["--dns-server", "8.8.8.8", "--dns-tcp"])
+
+    def test_get_dns_args_dns_tcp_false_not_included(self):
+        """Test that --dns-tcp is not included when dns_tcp is False."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.dns_server = "10.0.0.1"
+        cache.dns_tcp = False
+
+        result = cache.get_dns_args()
+
+        self.assertEqual(result, ["--dns-server", "10.0.0.1"])
+        self.assertNotIn("--dns-tcp", result)
+
+
+class TestEnumCacheNetworkOptions(unittest.TestCase):
+    """Test EnumCache network option attributes and initialization."""
+
+    def test_cache_port_default_is_none(self):
+        """Test that cache.port defaults to None."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+
+        self.assertIsNone(cache.port)
+
+    def test_cache_smb_timeout_default_is_none(self):
+        """Test that cache.smb_timeout defaults to None."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+
+        self.assertIsNone(cache.smb_timeout)
+
+    def test_cache_ipv6_default_is_false(self):
+        """Test that cache.ipv6 defaults to False."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+
+        self.assertFalse(cache.ipv6)
+
+    def test_cache_dns_server_default_is_none(self):
+        """Test that cache.dns_server defaults to None."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+
+        self.assertIsNone(cache.dns_server)
+
+    def test_cache_dns_tcp_default_is_false(self):
+        """Test that cache.dns_tcp defaults to False."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+
+        self.assertFalse(cache.dns_tcp)
+
+    def test_cache_network_options_can_be_set(self):
+        """Test that all network options can be set on cache."""
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.port = 139
+        cache.smb_timeout = 90
+        cache.ipv6 = True
+        cache.dns_server = "192.168.1.1"
+        cache.dns_tcp = True
+
+        self.assertEqual(cache.port, 139)
+        self.assertEqual(cache.smb_timeout, 90)
+        self.assertTrue(cache.ipv6)
+        self.assertEqual(cache.dns_server, "192.168.1.1")
+        self.assertTrue(cache.dns_tcp)
+
+
+class TestEnumCacheRunNxcCached(unittest.TestCase):
+    """Test EnumCache.run_nxc_cached() method for network option application."""
+
+    def test_run_nxc_cached_applies_port(self):
+        """Test that run_nxc_cached passes port to run_nxc."""
+        from unittest.mock import patch
+
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.port = 139
+        cache.timeout = 30
+
+        with patch("nxc_enum.models.cache.run_nxc") as mock_run_nxc:
+            mock_run_nxc.return_value = (0, "", "")
+
+            cache.run_nxc_cached(["smb", "10.0.0.1"])
+
+            mock_run_nxc.assert_called_once()
+            call_kwargs = mock_run_nxc.call_args[1]
+            self.assertEqual(call_kwargs["port"], 139)
+
+    def test_run_nxc_cached_applies_smb_timeout(self):
+        """Test that run_nxc_cached passes smb_timeout to run_nxc."""
+        from unittest.mock import patch
+
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.smb_timeout = 120
+        cache.timeout = 30
+
+        with patch("nxc_enum.models.cache.run_nxc") as mock_run_nxc:
+            mock_run_nxc.return_value = (0, "", "")
+
+            cache.run_nxc_cached(["smb", "10.0.0.1"])
+
+            mock_run_nxc.assert_called_once()
+            call_kwargs = mock_run_nxc.call_args[1]
+            self.assertEqual(call_kwargs["smb_timeout"], 120)
+
+    def test_run_nxc_cached_applies_dns_args(self):
+        """Test that run_nxc_cached adds DNS args to command."""
+        from unittest.mock import patch
+
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.dns_server = "10.0.0.53"
+        cache.dns_tcp = True
+        cache.timeout = 30
+
+        with patch("nxc_enum.models.cache.run_nxc") as mock_run_nxc:
+            mock_run_nxc.return_value = (0, "", "")
+
+            cache.run_nxc_cached(["smb", "10.0.0.1"])
+
+            mock_run_nxc.assert_called_once()
+            call_args = mock_run_nxc.call_args[0][0]
+            self.assertIn("--dns-server", call_args)
+            self.assertIn("10.0.0.53", call_args)
+            self.assertIn("--dns-tcp", call_args)
+
+    def test_run_nxc_cached_stores_result_in_cache_attr(self):
+        """Test that run_nxc_cached stores result when cache_attr is provided."""
+        from unittest.mock import patch
+
+        from nxc_enum.models.cache import EnumCache
+
+        cache = EnumCache()
+        cache.timeout = 30
+
+        with patch("nxc_enum.models.cache.run_nxc") as mock_run_nxc:
+            mock_run_nxc.return_value = (0, "output", "")
+
+            cache.run_nxc_cached(["smb", "10.0.0.1"], cache_attr="smb_basic")
+
+            self.assertEqual(cache.smb_basic, (0, "output", ""))
 
 
 if __name__ == "__main__":

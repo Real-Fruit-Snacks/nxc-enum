@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # Patterns for verbose output parsing
 RE_SHARE_CHECK = re.compile(r"Checking share[:\s]+(\S+)", re.IGNORECASE)
@@ -228,13 +229,32 @@ def enum_shares(args, cache):
         # Store verbose info in cache for potential use by other modules
         cache.share_verbose_info = verbose_info
 
-        # Separate accessible vs no-access shares (handle 5-tuple format)
-        accessible = [(n, p, r, t, m) for n, p, r, t, m in shares if "READ" in p or "WRITE" in p]
-        no_access = [
-            (n, p, r, t, m) for n, p, r, t, m in shares if "READ" not in p and "WRITE" not in p
-        ]
+        # Apply shares filter if specified
+        shares_filter = getattr(args, "shares_filter", None)
+        if shares_filter:
+            if shares_filter == "READ":
+                # Show shares where user has at least READ access (includes READ,WRITE)
+                filtered_shares = [(n, p, r, t, m) for n, p, r, t, m in shares if "READ" in p]
+            else:  # WRITE
+                # Show shares where user has WRITE access (includes READ,WRITE)
+                filtered_shares = [(n, p, r, t, m) for n, p, r, t, m in shares if "WRITE" in p]
 
-        status(f"Found {len(shares)} share(s)", "success")
+            status(f"Found {len(shares)} share(s)", "success")
+            status(f"Filtered to {len(filtered_shares)} shares with {shares_filter} access", "info")
+
+            # When filtering, all filtered shares are "accessible" by definition
+            accessible = filtered_shares
+            no_access = []
+        else:
+            # No filter - separate accessible vs no-access shares (handle 5-tuple format)
+            accessible = [
+                (n, p, r, t, m) for n, p, r, t, m in shares if "READ" in p or "WRITE" in p
+            ]
+            no_access = [
+                (n, p, r, t, m) for n, p, r, t, m in shares if "READ" not in p and "WRITE" not in p
+            ]
+
+            status(f"Found {len(shares)} share(s)", "success")
         output("")
 
         # Show verbose access errors if any were captured
@@ -355,11 +375,16 @@ def enum_shares(args, cache):
                 share_list = ", ".join(file_shares[:3])
                 if len(file_shares) > 3:
                     share_list += f" (+{len(file_shares) - 3} more)"
+
+                # Get auth string for external tool commands
+                auth_info = get_external_tool_auth(args, cache, tool="nxc")
+                auth_hint = auth_info["auth_string"]
+
                 # Enumerate and download files from shares
                 # MAX_FILE_SIZE=10485760 (10MB) - default 50KB is too small
                 # DOWNLOAD_FLAG=True enables file download (default is JSON listing only)
                 spider_cmd = (
-                    f"nxc smb {target} -u <user> -p <pass> "
+                    f"nxc smb {target} {auth_hint} "
                     "-M spider_plus -o OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760 DOWNLOAD_FLAG=True"
                 )
                 cache.add_next_step(
@@ -371,12 +396,9 @@ def enum_shares(args, cache):
 
                 # Add smbclient command for manual browsing
                 first_share = file_shares[0]
-                if args.user:
-                    smbclient_cmd = (
-                        f"smbclient //{target}/{first_share} " f"-U '{args.user}%<password>'"
-                    )
-                else:
-                    smbclient_cmd = f"smbclient //{target}/{first_share} -U '<user>%<password>'"
+                smb_auth_info = get_external_tool_auth(args, cache, tool="smbclient")
+                smb_auth_hint = smb_auth_info["auth_string"]
+                smbclient_cmd = f"smbclient //{target}/{first_share} {smb_auth_hint}"
                 cache.add_next_step(
                     finding=f"Readable share: {first_share}",
                     command=smbclient_cmd,
@@ -385,9 +407,13 @@ def enum_shares(args, cache):
                 )
 
         # Store share names for aggregated copy-paste section
-        cache.copy_paste_data["share_names"].update(s[0] for s in shares)
+        # When filter is applied, only store filtered shares (accessible ones)
+        shares_for_copy = accessible if shares_filter else shares
+        cache.copy_paste_data["share_names"].update(s[0] for s in shares_for_copy)
         # Store UNC paths for multi-target aggregation (includes target IP)
-        cache.copy_paste_data["share_unc_paths"].update(f"\\\\{target}\\{s[0]}" for s in shares)
+        cache.copy_paste_data["share_unc_paths"].update(
+            f"\\\\{target}\\{s[0]}" for s in shares_for_copy
+        )
     else:
         # No shares parsed - check for access denied or other errors
         combined = stdout + stderr

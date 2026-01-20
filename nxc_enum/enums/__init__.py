@@ -8,9 +8,10 @@ from .av import enum_av
 from .av_multi import enum_av_multi
 from .bitlocker import enum_bitlocker
 from .computers import enum_computers
-from .dc_list import enum_dc_list
 
 # LDAP enumeration
+from .custom_query import enum_custom_query
+from .dc_list import enum_dc_list
 from .delegation import enum_delegation
 from .descriptions import enum_descriptions
 
@@ -110,6 +111,7 @@ __all__ = [
     "enum_pre2k",
     "enum_bitlocker",
     # LDAP
+    "enum_custom_query",
     "enum_delegation",
     "enum_maq",
     "enum_adcs",

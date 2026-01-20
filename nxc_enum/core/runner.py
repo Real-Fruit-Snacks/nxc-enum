@@ -62,6 +62,13 @@ def cached_resolve(hostname: str) -> str:
 
     Returns:
         Resolved IP address (or original IP if already an IP)
+
+    Note:
+        This function uses the system's default DNS resolver (via socket.gethostbyname).
+        Custom DNS servers (--dns-server) and DNS-over-TCP (--dns-tcp) options are
+        not supported here as they would require the dnspython library. For operations
+        that need custom DNS, pass the --dns-server and --dns-tcp options directly
+        to nxc commands, which handles DNS resolution internally.
     """
     # Quick check: if it looks like an IPv4 address, return as-is
     parts = hostname.split(".")
@@ -92,7 +99,12 @@ def cached_resolve(hostname: str) -> str:
         return hostname
 
 
-def run_nxc(args: list, timeout: int = 60) -> tuple[int, str, str]:
+def run_nxc(
+    args: list,
+    timeout: int = 60,
+    port: int | None = None,
+    smb_timeout: int | None = None,
+) -> tuple[int, str, str]:
     """Run netexec command and return exit code, stdout, stderr.
 
     All commands include --verbose for detailed output that enables
@@ -106,17 +118,33 @@ def run_nxc(args: list, timeout: int = 60) -> tuple[int, str, str]:
     Args:
         args: Command arguments to pass to nxc
         timeout: Maximum execution time in seconds (default: 60)
+        port: Optional custom port to use (adds --port PORT to nxc command)
+        smb_timeout: Optional SMB-specific timeout (overrides timeout for SMB ops)
 
     Returns:
         Tuple of (return_code, stdout, stderr)
+
+    Note:
+        DNS resolution options (--dns-server, --dns-tcp) should be passed
+        directly in the args list when needed, as they are nxc-native options.
+        This module's cached_resolve() uses system DNS; custom DNS servers
+        would require the dnspython library which is not a dependency.
     """
     cmd = ["nxc"] + args
+
+    # Add custom port if specified and not already in args
+    if port is not None and "--port" not in args:
+        cmd.extend(["--port", str(port)])
 
     # Always add --verbose for more detailed output to parse
     if "--verbose" not in args:
         cmd.append("--verbose")
+
+    # Use SMB-specific timeout if provided, otherwise use general timeout
+    effective_timeout = smb_timeout if smb_timeout is not None else timeout
+
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=effective_timeout)
         return result.returncode, result.stdout, result.stderr
     except subprocess.TimeoutExpired:
         return -1, "", "Command timed out"
@@ -130,13 +158,29 @@ def run_nxc(args: list, timeout: int = 60) -> tuple[int, str, str]:
         return -1, "", f"Command execution failed: {e}"
 
 
-def check_port(host: str, port: int, timeout: float = 2.0) -> bool:
-    """Check if a port is open (uses DNS cache for hostnames)."""
+def check_port(
+    host: str,
+    port: int,
+    timeout: float = 2.0,
+    ipv6: bool = False,
+) -> bool:
+    """Check if a port is open (uses DNS cache for hostnames).
+
+    Args:
+        host: Hostname or IP address to check
+        port: Port number to check
+        timeout: Connection timeout in seconds (default: 2.0)
+        ipv6: If True, use IPv6 (AF_INET6) instead of IPv4 (AF_INET)
+
+    Returns:
+        True if port is open, False otherwise
+    """
     sock = None
     try:
         # Use cached DNS resolution for hostnames
         resolved_host = cached_resolve(host)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        address_family = socket.AF_INET6 if ipv6 else socket.AF_INET
+        sock = socket.socket(address_family, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((resolved_host, port))
         return result == 0
@@ -150,7 +194,12 @@ def check_port(host: str, port: int, timeout: float = 2.0) -> bool:
                 pass
 
 
-def validate_host_smb(target: str, timeout: int = 10) -> Tuple[bool, dict]:
+def validate_host_smb(
+    target: str,
+    timeout: int = 10,
+    port: int | None = None,
+    smb_timeout: int | None = None,
+) -> Tuple[bool, dict]:
     """Validate host reachability via SMB instead of ICMP ping.
 
     Makes an unauthenticated SMB connection to check if host responds.
@@ -164,6 +213,8 @@ def validate_host_smb(target: str, timeout: int = 10) -> Tuple[bool, dict]:
     Args:
         target: IP address or hostname to check
         timeout: Connection timeout in seconds
+        port: Custom SMB port (default: 445)
+        smb_timeout: SMB-specific timeout (overrides timeout for SMB operations)
 
     Returns:
         Tuple of (is_reachable, info_dict) where info_dict contains:
@@ -171,7 +222,7 @@ def validate_host_smb(target: str, timeout: int = 10) -> Tuple[bool, dict]:
         - signing_required, smbv1_enabled
     """
     smb_args = ["smb", target, "-u", "", "-p", ""]
-    rc, stdout, stderr = run_nxc(smb_args, timeout)
+    rc, stdout, stderr = run_nxc(smb_args, timeout, port=port, smb_timeout=smb_timeout)
     combined = stdout + stderr
 
     # Host is reachable if we got ANY SMB response
@@ -221,6 +272,7 @@ def parallel_port_prescan(
     timeout: float = PORT_PRESCAN_TIMEOUT,
     workers: int = PORT_PRESCAN_WORKERS,
     progress_callback: Callable[[int, int], None] | None = None,
+    ipv6: bool = False,
 ) -> list[str]:
     """Fast parallel TCP port scan to filter reachable hosts.
 
@@ -233,6 +285,7 @@ def parallel_port_prescan(
         timeout: Per-host timeout in seconds (default 0.5s)
         workers: Max concurrent connections (default 100)
         progress_callback: Optional callback(completed, total) for progress updates
+        ipv6: If True, use IPv6 (AF_INET6) instead of IPv4 (AF_INET)
 
     Returns:
         List of hosts with port open (order not preserved)
@@ -242,7 +295,7 @@ def parallel_port_prescan(
     effective_workers = PROXY_PORT_PRESCAN_WORKERS if is_proxy_mode() else workers
 
     def check_single(host: str) -> str | None:
-        if check_port(host, port, effective_timeout):
+        if check_port(host, port, effective_timeout, ipv6=ipv6):
             return host
         return None
 
@@ -271,6 +324,8 @@ def parallel_smb_validation(
     timeout: int = 10,
     workers: int = SMB_VALIDATION_WORKERS,
     progress_callback: Callable[[int, int, str], None] | None = None,
+    port: int | None = None,
+    smb_timeout: int | None = None,
 ) -> dict[str, Tuple[bool, dict]]:
     """Parallel SMB validation for multiple hosts.
 
@@ -282,6 +337,8 @@ def parallel_smb_validation(
         timeout: Per-host SMB timeout in seconds (default 10)
         workers: Max concurrent nxc processes (default 20)
         progress_callback: Optional callback(completed, total, hostname) for updates
+        port: Custom SMB port (default: 445)
+        smb_timeout: SMB-specific timeout (overrides timeout for SMB operations)
 
     Returns:
         Dict mapping host -> (is_reachable, smb_info)
@@ -293,7 +350,10 @@ def parallel_smb_validation(
     completed = 0
 
     with ThreadPoolExecutor(max_workers=min(len(targets), effective_workers)) as executor:
-        futures = {executor.submit(validate_host_smb, t, timeout): t for t in targets}
+        futures = {
+            executor.submit(validate_host_smb, t, timeout, port=port, smb_timeout=smb_timeout): t
+            for t in targets
+        }
         for future in as_completed(futures):
             host = futures[future]
             completed += 1
@@ -311,6 +371,7 @@ def parallel_smb_validation(
 def prescan_service_ports(
     target: str,
     timeout: float = SERVICE_PRESCAN_TIMEOUT,
+    ipv6: bool = False,
 ) -> dict:
     """Pre-scan service ports to determine which services are reachable.
 
@@ -321,6 +382,7 @@ def prescan_service_ports(
     Args:
         target: IP address or hostname to scan
         timeout: Per-port timeout in seconds (default 1.0s)
+        ipv6: If True, use IPv6 (AF_INET6) instead of IPv4 (AF_INET)
 
     Returns:
         Dict mapping service name to availability:
@@ -342,12 +404,12 @@ def prescan_service_ports(
 
     # Check standard single-port services
     for service, port in SERVICE_PORTS.items():
-        results[service] = check_port(target, port, effective_timeout)
+        results[service] = check_port(target, port, effective_timeout, ipv6=ipv6)
 
     # Check VNC ports (multiple possible ports)
     vnc_available = False
     for vnc_port in VNC_PORTS:
-        if check_port(target, vnc_port, effective_timeout):
+        if check_port(target, vnc_port, effective_timeout, ipv6=ipv6):
             vnc_available = True
             break
     results["vnc"] = vnc_available
@@ -359,6 +421,7 @@ def parallel_prescan_services(
     target: str,
     timeout: float = SERVICE_PRESCAN_TIMEOUT,
     workers: int = SERVICE_PRESCAN_WORKERS,
+    ipv6: bool = False,
 ) -> dict:
     """Parallel pre-scan of all service ports for faster startup.
 
@@ -369,6 +432,7 @@ def parallel_prescan_services(
         target: IP address or hostname to scan
         timeout: Per-port timeout in seconds (default 1.0s)
         workers: Max concurrent port checks (default 10)
+        ipv6: If True, use IPv6 (AF_INET6) instead of IPv4 (AF_INET)
 
     Returns:
         Dict mapping service name to availability (same as prescan_service_ports)
@@ -387,7 +451,7 @@ def parallel_prescan_services(
 
     def check_single(service_port_tuple):
         service_name, port = service_port_tuple
-        is_open = check_port(target, port, effective_timeout)
+        is_open = check_port(target, port, effective_timeout, ipv6=ipv6)
         return service_name, is_open
 
     with ThreadPoolExecutor(max_workers=min(len(ports_to_check), workers)) as executor:
