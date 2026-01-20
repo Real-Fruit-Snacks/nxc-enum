@@ -4,7 +4,7 @@ import os
 import sys
 import unittest
 from argparse import Namespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -149,7 +149,7 @@ class TestSprayControlOptions(unittest.TestCase):
 
         args.continue_on_success = True
 
-        result = validate_credentials_multi("target", creds, 30, args)
+        validate_credentials_multi("target", creds, 30, args)
 
         self.assertEqual(mock_test.call_count, 3)  # user1 pass3 skipped
 

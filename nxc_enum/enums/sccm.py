@@ -15,7 +15,6 @@ from ..core.colors import Colors, c
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
 from ..parsing.nxc_output import is_nxc_noise_line
-from ..reporting.next_steps import get_external_tool_auth
 
 # LDAP filter for SCCM service connection points
 SCCM_FILTER = "(objectClass=mSSMSSite)"
@@ -176,10 +175,6 @@ def enum_sccm(args, cache):
         output(c("    - Task sequences may contain embedded credentials", Colors.RED))
         output(c("    - Admin console grants access to managed systems", Colors.RED))
         output("")
-
-        # Build auth hint
-        auth_info = get_external_tool_auth(args, cache, tool="nxc")
-        auth_hint = auth_info["auth_string"]
 
         # Add next steps
         for server in sccm_info["servers"][:3]:  # Limit to first 3

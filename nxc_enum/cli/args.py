@@ -24,7 +24,8 @@ def create_parser():
     """Create and return the argument parser."""
     parser = argparse.ArgumentParser(
         prog="nxc-enum",
-        description=textwrap.dedent("""
+        description=textwrap.dedent(
+            """
             ╔═══════════════════════════════════════════════════════════════════╗
             ║  nxc-enum - NetExec AD Enumeration with enum4linux-ng Style       ║
             ╚═══════════════════════════════════════════════════════════════════╝
@@ -40,9 +41,11 @@ def create_parser():
               • Local admin detection and admin-aware command execution
               • Actionable "Next Steps" recommendations based on findings
               • Pure enumeration only (no command execution on targets)
-        """),
+        """
+        ),
         formatter_class=CustomHelpFormatter,
-        epilog=textwrap.dedent("""
+        epilog=textwrap.dedent(
+            """
             ─────────────────────────────────────────────────────────────────────
             Examples:
 
@@ -88,7 +91,8 @@ def create_parser():
                 admin           Password123
                 svc_backup      Summer2024!
             ─────────────────────────────────────────────────────────────────────
-        """),
+        """
+        ),
     )
 
     # ─────────────────────────────────────────────────────────────────────────
