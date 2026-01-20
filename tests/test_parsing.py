@@ -260,5 +260,164 @@ class TestClassification(unittest.TestCase):
         self.assertIn("IT Support", other_names)
 
 
+class TestModuleArguments(unittest.TestCase):
+    """Test module-related command line arguments."""
+
+    def setUp(self):
+        """Import parser for each test."""
+        from nxc_enum.cli.args import create_parser
+
+        self.parser = create_parser()
+
+    def test_shares_filter_read(self):
+        """Test --shares-filter READ argument."""
+        args = self.parser.parse_args(["target", "--shares-filter", "READ"])
+        self.assertEqual(args.shares_filter, "READ")
+
+    def test_shares_filter_write(self):
+        """Test --shares-filter WRITE argument."""
+        args = self.parser.parse_args(["target", "--shares-filter", "WRITE"])
+        self.assertEqual(args.shares_filter, "WRITE")
+
+    def test_shares_filter_default(self):
+        """Test --shares-filter default is None."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.shares_filter)
+
+    def test_active_users_flag(self):
+        """Test --active-users flag."""
+        args = self.parser.parse_args(["target", "--active-users"])
+        self.assertTrue(args.active_users)
+
+    def test_active_users_default(self):
+        """Test --active-users default is False."""
+        args = self.parser.parse_args(["target"])
+        self.assertFalse(args.active_users)
+
+    def test_local_groups_filter(self):
+        """Test --local-groups-filter argument."""
+        args = self.parser.parse_args(["target", "--local-groups-filter", "Administrators"])
+        self.assertEqual(args.local_groups_filter, "Administrators")
+
+    def test_local_groups_filter_default(self):
+        """Test --local-groups-filter default is None."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.local_groups_filter)
+
+    def test_query_argument(self):
+        """Test --query argument."""
+        args = self.parser.parse_args(["target", "--query", "(objectClass=user)"])
+        self.assertEqual(args.query, "(objectClass=user)")
+
+    def test_query_attrs_argument(self):
+        """Test --query-attrs argument."""
+        args = self.parser.parse_args(
+            ["target", "--query", "(objectClass=user)", "--query-attrs", "cn,mail"]
+        )
+        self.assertEqual(args.query_attrs, "cn,mail")
+
+    def test_query_arguments_default(self):
+        """Test --query and --query-attrs defaults."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.query)
+        self.assertIsNone(args.query_attrs)
+
+
+class TestNetworkArguments(unittest.TestCase):
+    """Test network and protocol-related command line arguments."""
+
+    def setUp(self):
+        """Import parser for each test."""
+        from nxc_enum.cli.args import create_parser
+
+        self.parser = create_parser()
+
+    def test_port_argument(self):
+        """Test --port argument."""
+        args = self.parser.parse_args(["target", "--port", "139"])
+        self.assertEqual(args.port, 139)
+
+    def test_port_default(self):
+        """Test --port default is None."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.port)
+
+    def test_smb_timeout_argument(self):
+        """Test --smb-timeout argument."""
+        args = self.parser.parse_args(["target", "--smb-timeout", "60"])
+        self.assertEqual(args.smb_timeout, 60)
+
+    def test_smb_timeout_default(self):
+        """Test --smb-timeout default is None."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.smb_timeout)
+
+    def test_no_smb_flag(self):
+        """Test --no-smb flag."""
+        args = self.parser.parse_args(["target", "--no-smb"])
+        self.assertTrue(args.no_smb)
+
+    def test_no_smb_default(self):
+        """Test --no-smb default is False."""
+        args = self.parser.parse_args(["target"])
+        self.assertFalse(args.no_smb)
+
+    def test_ipv6_short_flag(self):
+        """Test -6 short flag."""
+        args = self.parser.parse_args(["target", "-6"])
+        self.assertTrue(args.ipv6)
+
+    def test_ipv6_long_flag(self):
+        """Test --ipv6 long flag."""
+        args = self.parser.parse_args(["target", "--ipv6"])
+        self.assertTrue(args.ipv6)
+
+    def test_ipv6_default(self):
+        """Test IPv6 default is False."""
+        args = self.parser.parse_args(["target"])
+        self.assertFalse(args.ipv6)
+
+    def test_dns_server_argument(self):
+        """Test --dns-server argument."""
+        args = self.parser.parse_args(["target", "--dns-server", "8.8.8.8"])
+        self.assertEqual(args.dns_server, "8.8.8.8")
+
+    def test_dns_server_default(self):
+        """Test --dns-server default is None."""
+        args = self.parser.parse_args(["target"])
+        self.assertIsNone(args.dns_server)
+
+    def test_dns_tcp_flag(self):
+        """Test --dns-tcp flag."""
+        args = self.parser.parse_args(["target", "--dns-tcp"])
+        self.assertTrue(args.dns_tcp)
+
+    def test_dns_tcp_default(self):
+        """Test --dns-tcp default is False."""
+        args = self.parser.parse_args(["target"])
+        self.assertFalse(args.dns_tcp)
+
+    def test_combined_network_options(self):
+        """Test multiple network options combined."""
+        args = self.parser.parse_args(
+            [
+                "target",
+                "--port",
+                "139",
+                "--smb-timeout",
+                "45",
+                "-6",
+                "--dns-server",
+                "192.168.1.1",
+                "--dns-tcp",
+            ]
+        )
+        self.assertEqual(args.port, 139)
+        self.assertEqual(args.smb_timeout, 45)
+        self.assertTrue(args.ipv6)
+        self.assertEqual(args.dns_server, "192.168.1.1")
+        self.assertTrue(args.dns_tcp)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -110,14 +110,14 @@ class TestCredentialValidation(unittest.TestCase):
         self.assertEqual(args, ["-u", "guest", "-p", ""])
 
     def test_auth_args_raises_without_auth(self):
-        """Test that auth_args() raises CredentialError without password or hash."""
+        """Test that auth_args() raises CredentialError without any auth method."""
         cred = Credential(user="admin")
 
         with self.assertRaises(CredentialError) as context:
             cred.auth_args()
 
         self.assertIn("admin", str(context.exception))
-        self.assertIn("no password or hash", str(context.exception))
+        self.assertIn("no password, hash, kcache, AES key, or certificate", str(context.exception))
 
     def test_has_auth_with_password(self):
         """Test has_auth() returns True with password."""
@@ -191,6 +191,299 @@ class TestCredentialValidation(unittest.TestCase):
         self.assertIn("admin", repr_str)
         self.assertIn("password=None", repr_str)
         self.assertIn("hash=None", repr_str)
+
+
+class TestLocalAuthentication(unittest.TestCase):
+    """Test local authentication flag support."""
+
+    def test_auth_args_with_local_auth(self):
+        """Test auth_args() includes --local-auth when set."""
+        cred = Credential(user="admin", password="pass", local_auth=True)
+        args = cred.auth_args()
+
+        self.assertIn("--local-auth", args)
+
+    def test_auth_args_without_local_auth(self):
+        """Test auth_args() excludes --local-auth when not set."""
+        cred = Credential(user="admin", password="pass", local_auth=False)
+        args = cred.auth_args()
+
+        self.assertNotIn("--local-auth", args)
+
+    def test_auth_args_local_auth_position(self):
+        """Test that --local-auth comes at the end of args."""
+        cred = Credential(user="admin", password="pass", domain="CORP", local_auth=True)
+        args = cred.auth_args()
+
+        self.assertEqual(args[-1], "--local-auth")
+
+    def test_auth_args_local_auth_with_hash(self):
+        """Test local_auth works with hash authentication."""
+        cred = Credential(user="admin", hash="aad3b435:31d6cfe0", local_auth=True)
+        args = cred.auth_args()
+
+        self.assertIn("-H", args)
+        self.assertIn("--local-auth", args)
+
+    def test_local_auth_default_false(self):
+        """Test that local_auth defaults to False."""
+        cred = Credential(user="admin", password="pass")
+        self.assertFalse(cred.local_auth)
+
+    def test_repr_includes_local_auth(self):
+        """Test that __repr__() includes local_auth field."""
+        cred = Credential(user="admin", password="pass", local_auth=True)
+        repr_str = repr(cred)
+
+        self.assertIn("local_auth=True", repr_str)
+
+
+class TestDelegation(unittest.TestCase):
+    """Test Kerberos delegation options support."""
+
+    def test_auth_args_with_delegate(self):
+        """Test auth_args() includes --delegate when set."""
+        cred = Credential(user="admin", password="pass", delegate="target_user")
+        args = cred.auth_args()
+
+        self.assertIn("--delegate", args)
+        self.assertIn("target_user", args)
+
+    def test_auth_args_delegate_value_position(self):
+        """Test that target user follows --delegate flag."""
+        cred = Credential(user="admin", password="pass", delegate="target_user")
+        args = cred.auth_args()
+
+        delegate_idx = args.index("--delegate")
+        self.assertEqual(args[delegate_idx + 1], "target_user")
+
+    def test_auth_args_without_delegate(self):
+        """Test auth_args() excludes --delegate when not set."""
+        cred = Credential(user="admin", password="pass")
+        args = cred.auth_args()
+
+        self.assertNotIn("--delegate", args)
+
+    def test_auth_args_with_delegate_self(self):
+        """Test auth_args() includes --self when delegate_self is True."""
+        cred = Credential(user="admin", password="pass", delegate="target_user", delegate_self=True)
+        args = cred.auth_args()
+
+        self.assertIn("--delegate", args)
+        self.assertIn("--self", args)
+
+    def test_auth_args_self_requires_delegate(self):
+        """Test that --self is not included without --delegate."""
+        cred = Credential(user="admin", password="pass", delegate_self=True)
+        args = cred.auth_args()
+
+        self.assertNotIn("--self", args)
+
+    def test_delegate_default_none(self):
+        """Test that delegate defaults to None."""
+        cred = Credential(user="admin", password="pass")
+        self.assertIsNone(cred.delegate)
+
+    def test_delegate_self_default_false(self):
+        """Test that delegate_self defaults to False."""
+        cred = Credential(user="admin", password="pass")
+        self.assertFalse(cred.delegate_self)
+
+    def test_repr_includes_delegate(self):
+        """Test that __repr__() includes delegate field."""
+        cred = Credential(user="admin", password="pass", delegate="target_user")
+        repr_str = repr(cred)
+
+        self.assertIn("delegate='target_user'", repr_str)
+
+    def test_repr_includes_delegate_self(self):
+        """Test that __repr__() includes delegate_self field."""
+        cred = Credential(user="admin", password="pass", delegate="target", delegate_self=True)
+        repr_str = repr(cred)
+
+        self.assertIn("delegate_self=True", repr_str)
+
+
+class TestKerberosAuthentication(unittest.TestCase):
+    """Test Kerberos authentication options support."""
+
+    def test_auth_args_with_kerberos_flag(self):
+        """Test auth_args() includes -k when kerberos is True."""
+        cred = Credential(user="admin", password="pass", kerberos=True)
+        args = cred.auth_args()
+
+        self.assertIn("-k", args)
+
+    def test_auth_args_without_kerberos_flag(self):
+        """Test auth_args() excludes -k when kerberos is False."""
+        cred = Credential(user="admin", password="pass", kerberos=False)
+        args = cred.auth_args()
+
+        self.assertNotIn("-k", args)
+
+    def test_auth_args_with_kcache(self):
+        """Test auth_args() includes --use-kcache when set."""
+        cred = Credential(user="admin", use_kcache=True)
+        args = cred.auth_args()
+
+        self.assertIn("--use-kcache", args)
+        self.assertNotIn("-p", args)  # No password needed
+        self.assertNotIn("-H", args)  # No hash needed
+
+    def test_auth_args_with_aeskey(self):
+        """Test auth_args() includes --aesKey when set."""
+        cred = Credential(user="admin", aes_key="0123456789abcdef" * 4)
+        args = cred.auth_args()
+
+        self.assertIn("--aesKey", args)
+        self.assertIn("0123456789abcdef" * 4, args)
+
+    def test_auth_args_with_kdchost(self):
+        """Test auth_args() includes --kdcHost when set."""
+        cred = Credential(user="admin", password="pass", kdc_host="dc01.corp.local")
+        args = cred.auth_args()
+
+        self.assertIn("--kdcHost", args)
+        self.assertIn("dc01.corp.local", args)
+
+    def test_has_auth_with_kcache(self):
+        """Test has_auth() returns True with kcache."""
+        cred = Credential(user="admin", use_kcache=True)
+        self.assertTrue(cred.has_auth())
+
+    def test_has_auth_with_aeskey(self):
+        """Test has_auth() returns True with AES key."""
+        cred = Credential(user="admin", aes_key="abc123")
+        self.assertTrue(cred.has_auth())
+
+    def test_auth_type_kerberos_with_kcache(self):
+        """Test auth_type() returns 'kerberos' with kcache."""
+        cred = Credential(user="admin", use_kcache=True)
+        self.assertEqual(cred.auth_type(), "kerberos")
+
+    def test_auth_type_kerberos_with_aeskey(self):
+        """Test auth_type() returns 'kerberos' with AES key."""
+        cred = Credential(user="admin", aes_key="abc123")
+        self.assertEqual(cred.auth_type(), "kerberos")
+
+    def test_repr_redacts_aeskey(self):
+        """Test that __repr__() redacts AES key."""
+        cred = Credential(user="admin", aes_key="secret_aes_key_123")
+        repr_str = repr(cred)
+
+        self.assertNotIn("secret_aes_key_123", repr_str)
+        self.assertIn("****REDACTED****", repr_str)
+
+    def test_repr_includes_kerberos_fields(self):
+        """Test that __repr__() includes Kerberos fields."""
+        cred = Credential(user="admin", password="pass", kerberos=True, kdc_host="dc01.corp.local")
+        repr_str = repr(cred)
+
+        self.assertIn("kerberos=True", repr_str)
+        self.assertIn("kdc_host='dc01.corp.local'", repr_str)
+
+    def test_kerberos_defaults(self):
+        """Test that Kerberos fields default correctly."""
+        cred = Credential(user="admin", password="pass")
+
+        self.assertFalse(cred.kerberos)
+        self.assertFalse(cred.use_kcache)
+        self.assertIsNone(cred.aes_key)
+        self.assertIsNone(cred.kdc_host)
+
+    def test_auth_args_kerberos_with_password(self):
+        """Test Kerberos flag with password authentication."""
+        cred = Credential(user="admin", password="pass", kerberos=True, kdc_host="dc01")
+        args = cred.auth_args()
+
+        self.assertIn("-u", args)
+        self.assertIn("-p", args)
+        self.assertIn("-k", args)
+        self.assertIn("--kdcHost", args)
+
+
+class TestCertificateAuthentication(unittest.TestCase):
+    """Test certificate authentication options support."""
+
+    def test_auth_args_with_pfx_cert(self):
+        """Test auth_args() includes --pfx-cert when set."""
+        cred = Credential(user="admin", pfx_cert="/path/to/cert.pfx")
+        args = cred.auth_args()
+
+        self.assertIn("--pfx-cert", args)
+        self.assertIn("/path/to/cert.pfx", args)
+
+    def test_auth_args_with_pfx_pass(self):
+        """Test auth_args() includes --pfx-pass when set."""
+        cred = Credential(user="admin", pfx_cert="/path/cert.pfx", pfx_pass="certpass")
+        args = cred.auth_args()
+
+        self.assertIn("--pfx-cert", args)
+        self.assertIn("--pfx-pass", args)
+        self.assertIn("certpass", args)
+
+    def test_auth_args_with_pem_cert(self):
+        """Test auth_args() includes --pem-cert when set."""
+        cred = Credential(user="admin", pem_cert="/path/to/cert.pem")
+        args = cred.auth_args()
+
+        self.assertIn("--pem-cert", args)
+        self.assertIn("/path/to/cert.pem", args)
+
+    def test_auth_args_with_pem_cert_and_key(self):
+        """Test auth_args() includes --pem-cert and --pem-key when set."""
+        cred = Credential(user="admin", pem_cert="/path/cert.pem", pem_key="/path/key.pem")
+        args = cred.auth_args()
+
+        self.assertIn("--pem-cert", args)
+        self.assertIn("--pem-key", args)
+        self.assertIn("/path/cert.pem", args)
+        self.assertIn("/path/key.pem", args)
+
+    def test_has_auth_with_pfx_cert(self):
+        """Test has_auth() returns True with PFX certificate."""
+        cred = Credential(user="admin", pfx_cert="/path/cert.pfx")
+        self.assertTrue(cred.has_auth())
+
+    def test_has_auth_with_pem_cert(self):
+        """Test has_auth() returns True with PEM certificate."""
+        cred = Credential(user="admin", pem_cert="/path/cert.pem")
+        self.assertTrue(cred.has_auth())
+
+    def test_auth_type_certificate_pfx(self):
+        """Test auth_type() returns 'certificate' with PFX cert."""
+        cred = Credential(user="admin", pfx_cert="/path/cert.pfx")
+        self.assertEqual(cred.auth_type(), "certificate")
+
+    def test_auth_type_certificate_pem(self):
+        """Test auth_type() returns 'certificate' with PEM cert."""
+        cred = Credential(user="admin", pem_cert="/path/cert.pem")
+        self.assertEqual(cred.auth_type(), "certificate")
+
+    def test_repr_redacts_pfx_pass(self):
+        """Test that __repr__() redacts PFX password."""
+        cred = Credential(user="admin", pfx_cert="/path/cert.pfx", pfx_pass="secret_cert_pass")
+        repr_str = repr(cred)
+
+        self.assertNotIn("secret_cert_pass", repr_str)
+        self.assertIn("****REDACTED****", repr_str)
+
+    def test_repr_includes_cert_paths(self):
+        """Test that __repr__() includes certificate paths."""
+        cred = Credential(user="admin", pem_cert="/path/cert.pem", pem_key="/path/key.pem")
+        repr_str = repr(cred)
+
+        self.assertIn("pem_cert='/path/cert.pem'", repr_str)
+        self.assertIn("pem_key='/path/key.pem'", repr_str)
+
+    def test_certificate_defaults(self):
+        """Test that certificate fields default correctly."""
+        cred = Credential(user="admin", password="pass")
+
+        self.assertIsNone(cred.pfx_cert)
+        self.assertIsNone(cred.pem_cert)
+        self.assertIsNone(cred.pem_key)
+        self.assertIsNone(cred.pfx_pass)
 
 
 class TestFilePermissions(unittest.TestCase):

@@ -139,6 +139,79 @@ def create_parser():
         metavar="DOMAIN",
         help="Domain name",
     )
+    auth_group.add_argument(
+        "--local-auth",
+        action="store_true",
+        help="Authenticate against local SAM instead of domain",
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Kerberos Authentication
+    # ─────────────────────────────────────────────────────────────────────────
+    kerberos_group = parser.add_argument_group(
+        "Kerberos Authentication",
+        "Kerberos-based authentication and delegation options",
+    )
+    kerberos_group.add_argument(
+        "-k",
+        "--kerberos",
+        action="store_true",
+        help="Use Kerberos authentication (requires valid credentials or ccache)",
+    )
+    kerberos_group.add_argument(
+        "--use-kcache",
+        action="store_true",
+        help="Use Kerberos credentials from ccache file (KRB5CCNAME env var)",
+    )
+    kerberos_group.add_argument(
+        "--aesKey",
+        metavar="KEY",
+        help="AES key for Kerberos authentication (128 or 256 bit)",
+    )
+    kerberos_group.add_argument(
+        "--kdcHost",
+        metavar="HOST",
+        help="FQDN of the Key Distribution Center (KDC) for Kerberos",
+    )
+    kerberos_group.add_argument(
+        "--delegate",
+        metavar="USER",
+        help="Impersonate user via S4U2proxy delegation (requires constrained delegation)",
+    )
+    kerberos_group.add_argument(
+        "--self",
+        dest="delegate_self",
+        action="store_true",
+        help="Use S4U2self extension with --delegate (request ticket for self)",
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Certificate Authentication
+    # ─────────────────────────────────────────────────────────────────────────
+    cert_group = parser.add_argument_group(
+        "Certificate Authentication",
+        "Certificate-based authentication options (PKINIT)",
+    )
+    cert_group.add_argument(
+        "--pfx-cert",
+        metavar="FILE",
+        help="Path to PFX certificate file for PKINIT authentication",
+    )
+    cert_group.add_argument(
+        "--pfx-pass",
+        metavar="PASS",
+        help="Password for PFX certificate file",
+    )
+    cert_group.add_argument(
+        "--pem-cert",
+        metavar="FILE",
+        help="Path to PEM certificate file for PKINIT authentication",
+    )
+    cert_group.add_argument(
+        "--pem-key",
+        metavar="FILE",
+        help="Path to PEM private key file for PKINIT authentication",
+    )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Multi-Credential
@@ -157,13 +230,42 @@ def create_parser():
         "-U",
         "--userfile",
         metavar="FILE",
-        help="Usernames file (one per line)",
+        help="Usernames file (one per line). Use with -P for 1:1 pairing, or -p to spray single password",
     )
     multi_group.add_argument(
         "-P",
         "--passfile",
         metavar="FILE",
-        help="Passwords file (one per line, paired with -U)",
+        help="Passwords file (one per line). Use with -U for 1:1 pairing, or -u to try all against single user",
+    )
+    multi_group.add_argument(
+        "--continue-on-success",
+        action="store_true",
+        help="Continue testing credentials even after finding valid ones",
+    )
+    multi_group.add_argument(
+        "--jitter",
+        type=float,
+        metavar="SEC",
+        help="Random delay (0 to SEC) between credential attempts (forces sequential)",
+    )
+    multi_group.add_argument(
+        "--fail-limit",
+        type=int,
+        metavar="N",
+        help="Stop after N total failed login attempts",
+    )
+    multi_group.add_argument(
+        "--ufail-limit",
+        type=int,
+        metavar="N",
+        help="Stop testing a user after N failed attempts for that user",
+    )
+    multi_group.add_argument(
+        "--gfail-limit",
+        type=int,
+        metavar="N",
+        help="Stop after N consecutive failed attempts globally",
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -185,6 +287,11 @@ def create_parser():
         help="Domain users via RPC",
     )
     enum_group.add_argument(
+        "--active-users",
+        action="store_true",
+        help="Only show active/enabled users (filter disabled accounts)",
+    )
+    enum_group.add_argument(
         "--groups",
         action="store_true",
         help="Domain groups with members",
@@ -193,6 +300,12 @@ def create_parser():
         "--shares",
         action="store_true",
         help="SMB shares and permissions",
+    )
+    enum_group.add_argument(
+        "--shares-filter",
+        choices=["READ", "WRITE"],
+        metavar="ACCESS",
+        help="Filter shares by access level (READ or WRITE)",
     )
     enum_group.add_argument(
         "--spider",
@@ -252,9 +365,24 @@ def create_parser():
         help="Local groups and members",
     )
     enum_group.add_argument(
+        "--local-groups-filter",
+        metavar="GROUP",
+        help="Filter to specific local group name (e.g., 'Administrators')",
+    )
+    enum_group.add_argument(
         "--subnets",
         action="store_true",
         help="AD sites and subnets",
+    )
+    enum_group.add_argument(
+        "--query",
+        metavar="FILTER",
+        help="Custom LDAP query filter (e.g., '(objectClass=user)')",
+    )
+    enum_group.add_argument(
+        "--query-attrs",
+        metavar="ATTRS",
+        help="Attributes to retrieve for --query (comma-separated, e.g., 'cn,mail,description')",
     )
 
     # ─────────────────────────────────────────────────────────────────────────
@@ -298,6 +426,16 @@ def create_parser():
         "--asreproast",
         action="store_true",
         help="AS-REP roastable accounts",
+    )
+    security_group.add_argument(
+        "--kerberoast",
+        action="store_true",
+        help="Request TGS tickets for kerberoasting (use with -u/-U for targets)",
+    )
+    security_group.add_argument(
+        "--no-preauth-targets",
+        metavar="FILE",
+        help="Target accounts file for kerberoasting via AS-REP roastable user (no password needed)",
     )
     security_group.add_argument(
         "--adcs",
@@ -409,6 +547,11 @@ def create_parser():
         help="Include copy-pastable lists",
     )
     output_group.add_argument(
+        "--copy-paste-dir",
+        metavar="DIR",
+        help="Write copy-paste lists to individual files in DIR",
+    )
+    output_group.add_argument(
         "-q",
         "--quiet",
         action="store_true",
@@ -465,6 +608,47 @@ def create_parser():
         action="store_true",
         help="Enable proxy-aware mode for proxychains/SOCKS (reduces concurrency, "
         "increases timeouts, skips incompatible modules)",
+    )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Network/Protocol Options
+    # ─────────────────────────────────────────────────────────────────────────
+    network_group = parser.add_argument_group(
+        "Network",
+        "Network and protocol configuration options",
+    )
+    network_group.add_argument(
+        "--port",
+        type=int,
+        metavar="PORT",
+        help="Custom SMB port (default: 445)",
+    )
+    network_group.add_argument(
+        "--smb-timeout",
+        type=int,
+        metavar="SEC",
+        help="Timeout for SMB operations specifically (default: same as -t)",
+    )
+    network_group.add_argument(
+        "--no-smb",
+        action="store_true",
+        help="Skip SMB connection validation (for pure LDAP/other protocol operations)",
+    )
+    network_group.add_argument(
+        "-6",
+        "--ipv6",
+        action="store_true",
+        help="Use IPv6 for connections",
+    )
+    network_group.add_argument(
+        "--dns-server",
+        metavar="SERVER",
+        help="Custom DNS server for hostname resolution",
+    )
+    network_group.add_argument(
+        "--dns-tcp",
+        action="store_true",
+        help="Use TCP for DNS queries instead of UDP",
     )
 
     return parser

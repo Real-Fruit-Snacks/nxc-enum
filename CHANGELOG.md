@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2025-01-19
+
+### Added
+- **Kerberos Authentication** - Full Kerberos authentication support
+  - `-k, --kerberos` - Use Kerberos authentication
+  - `--use-kcache` - Use credentials from ccache file (KRB5CCNAME env var)
+  - `--aesKey` - AES key for Kerberos authentication (128 or 256 bit)
+  - `--kdcHost` - FQDN of the Key Distribution Center for Kerberos
+  - Example: `nxc-enum dc01.corp.local -u admin --use-kcache`
+  - Example: `nxc-enum dc01.corp.local -u admin --aesKey <key> --kdcHost dc01.corp.local`
+- **Certificate Authentication** - PKINIT certificate-based authentication
+  - `--pfx-cert` - Path to PFX certificate file
+  - `--pfx-pass` - Password for PFX certificate file
+  - `--pem-cert` - Path to PEM certificate file
+  - `--pem-key` - Path to PEM private key file
+  - Example: `nxc-enum dc01.corp.local -u admin --pfx-cert admin.pfx --pfx-pass certpass`
+- **Local Authentication** (`--local-auth`) - Authenticate against local SAM instead of domain
+  - Useful for targeting local admin accounts on member servers
+  - Example: `nxc-enum 192.168.1.100 -u Administrator -p pass --local-auth`
+- **Kerberos Delegation** - S4U2proxy and S4U2self delegation support
+  - `--delegate` - Impersonate user via S4U2proxy delegation
+  - `--self` - Use S4U2self extension with --delegate
+  - Example: `nxc-enum dc01.corp.local -u svc_sql -p pass --delegate admin --self`
+- **Spray Control Options** - Fine-grained control over credential testing
+  - `--continue-on-success` - Continue testing credentials after finding valid ones
+  - `--jitter` - Random delay (0 to SEC) between credential attempts (forces sequential)
+  - `--fail-limit` - Stop after N total failed login attempts
+  - `--ufail-limit` - Stop testing a user after N failed attempts for that user
+  - `--gfail-limit` - Stop after N consecutive failed attempts globally
+  - Example: `nxc-enum 10.0.0.1 -U users.txt -p 'Summer2024!' --jitter 2 --fail-limit 10`
+- **Active Users Filter** (`--active-users`) - Only show active/enabled user accounts
+  - Filters out disabled accounts from user enumeration
+  - Useful for targeting only active accounts
+- **Shares Access Filter** (`--shares-filter`) - Filter shares by access level
+  - `--shares-filter READ` - Only show shares with read access
+  - `--shares-filter WRITE` - Only show shares with write access
+- **Local Groups Filter** (`--local-groups-filter`) - Filter to specific local group
+  - Example: `nxc-enum 10.0.0.1 -u admin -p pass --local-groups --local-groups-filter Administrators`
+- **Custom LDAP Query** (`--query`, `--query-attrs`) - Execute custom LDAP queries
+  - `--query` - LDAP filter (e.g., '(objectClass=user)')
+  - `--query-attrs` - Attributes to retrieve (comma-separated)
+  - Example: `nxc-enum 10.0.0.1 -u admin -p pass --query '(objectClass=computer)' --query-attrs cn,operatingSystem`
+- **Network Options** - Protocol and network configuration
+  - `--port` - Custom SMB port (default: 445)
+  - `--smb-timeout` - Timeout for SMB operations specifically
+  - `--no-smb` - Skip SMB connection validation (for pure LDAP operations)
+  - `-6, --ipv6` - Use IPv6 for connections
+  - `--dns-server` - Custom DNS server for hostname resolution
+  - `--dns-tcp` - Use TCP for DNS queries instead of UDP
+
+### Changed
+- **Credential Validation** - Now supports sequential mode with spray controls
+  - Parallel mode (default) for fast validation when no spray options set
+  - Sequential mode auto-enabled when jitter or fail limits are specified
+  - Per-user failure tracking with `--ufail-limit`
+  - Consecutive failure tracking with `--gfail-limit`
+- **Credential Model** - Extended to support all authentication methods
+  - `auth_type()` now returns: 'certificate', 'kerberos', 'password', 'hash', or 'none'
+  - `has_auth()` accepts kcache, AES key, or certificate as valid authentication
+  - Sensitive fields (password, hash, AES key, pfx_pass) redacted in repr output
+
+### Documentation
+- Added Kerberos Authentication section to README
+- Added Certificate Authentication section to README
+- Added Spray Control Options to Multi-Credential Mode section
+- Added Network Options section to README
+- Updated Command Reference with all new arguments
+
 ## [1.7.0] - 2025-01-07
 
 ### Added
@@ -474,7 +542,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Colored terminal output
 - Pass-the-hash support
 
-[Unreleased]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.8.0...HEAD
+[1.8.0]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.7.0...v1.8.0
 [1.7.0]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.5.1...v1.6.0
 [1.5.1]: https://github.com/Real-Fruit-Snacks/nxc-enum/compare/v1.5.0...v1.5.1

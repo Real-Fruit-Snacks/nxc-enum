@@ -31,6 +31,13 @@ nxc-enum 10.0.0.1 -u admin -p 'Password123' -d CORP
 # Multiple credentials - compare access levels
 nxc-enum 10.0.0.1 -C creds.txt -d CORP
 
+# Kerberos authentication (ccache or AES key)
+nxc-enum dc01.corp.local -u admin --use-kcache
+nxc-enum dc01.corp.local -u admin -p pass -k
+
+# Certificate authentication (PKINIT)
+nxc-enum dc01.corp.local -u admin --pfx-cert admin.pfx
+
 # Multi-target scanning
 nxc-enum 10.0.0.0/24 -u admin -p 'Password123'    # CIDR notation
 nxc-enum 10.0.0.1-50 -u admin -p 'Password123'    # IP range
@@ -295,6 +302,27 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `-p, --password` | Password |
 | `-H, --hash` | NTLM hash (LM:NT or NT only) |
 | `-d, --domain` | Domain name |
+| `--local-auth` | Authenticate against local SAM instead of domain |
+
+### Kerberos Authentication
+
+| Flag | Description |
+|------|-------------|
+| `-k, --kerberos` | Use Kerberos authentication |
+| `--use-kcache` | Use credentials from ccache file (KRB5CCNAME) |
+| `--aesKey` | AES key for Kerberos (128 or 256 bit) |
+| `--kdcHost` | FQDN of the Key Distribution Center |
+| `--delegate` | Impersonate user via S4U2proxy delegation |
+| `--self` | Use S4U2self extension with --delegate |
+
+### Certificate Authentication
+
+| Flag | Description |
+|------|-------------|
+| `--pfx-cert` | Path to PFX certificate file (PKINIT) |
+| `--pfx-pass` | Password for PFX certificate |
+| `--pem-cert` | Path to PEM certificate file |
+| `--pem-key` | Path to PEM private key file |
 
 ### Multi-Credential Mode
 
@@ -303,6 +331,11 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `-C, --credfile` | Credentials file (user:password per line) |
 | `-U, --userfile` | Usernames file (one per line) |
 | `-P, --passfile` | Passwords file (paired with -U) |
+| `--continue-on-success` | Continue testing after finding valid credentials |
+| `--jitter` | Random delay (0 to SEC) between attempts (forces sequential) |
+| `--fail-limit` | Stop after N total failed login attempts |
+| `--ufail-limit` | Stop testing user after N failures for that user |
+| `--gfail-limit` | Stop after N consecutive failures globally |
 
 ### Enumeration Modules
 
@@ -310,8 +343,10 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 |------|-------------|
 | `-A, --all` | Run all enumeration modules |
 | `--users` | Domain users via RPC |
+| `--active-users` | Only show active/enabled users |
 | `--groups` | Domain groups with members |
 | `--shares` | SMB shares and permissions |
+| `--shares-filter` | Filter shares by access (READ or WRITE) |
 | `--spider` | Spider shares for files (metadata only) |
 | `--spider-download` | Enable file download during spidering |
 | `--spider-max-size` | Max file size to download (default: 10MB) |
@@ -323,7 +358,10 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `--av` | AV/EDR products `[admin]` |
 | `--computers` | Domain computers with OS info |
 | `--local-groups` | Local groups and members |
+| `--local-groups-filter` | Filter to specific local group name |
 | `--subnets` | AD sites and subnets |
+| `--query` | Custom LDAP query filter |
+| `--query-attrs` | Attributes for --query (comma-separated) |
 
 ### Security Checks
 
@@ -378,6 +416,17 @@ Targets can be IPs, hostnames, CIDR ranges, or IP ranges - all in the same file.
 | `--validate-only` | Only validate credentials, skip enumeration (fast cred check) |
 | `--proxy-mode` | Enable proxy mode for proxychains/SOCKS (see below) |
 | `--debug` | Show raw nxc command output |
+
+### Network
+
+| Flag | Description |
+|------|-------------|
+| `--port` | Custom SMB port (default: 445) |
+| `--smb-timeout` | Timeout for SMB operations specifically |
+| `--no-smb` | Skip SMB validation (for pure LDAP operations) |
+| `-6, --ipv6` | Use IPv6 for connections |
+| `--dns-server` | Custom DNS server for hostname resolution |
+| `--dns-tcp` | Use TCP for DNS queries instead of UDP |
 
 **Note on Hosts Resolution Check:** Before any enumeration begins, nxc-enum verifies that the DC hostname resolves to the target IP. If resolution fails, the tool exits with an error and provides the required `/etc/hosts` entry. Use `--skip-hosts-check` to bypass (not recommended - may cause authentication issues).
 

