@@ -30,7 +30,7 @@ def enum_gmsa(args, cache):
     If we can read msDS-ManagedPassword, we can extract the password.
     """
     target = cache.target if cache else args.target
-    print_section("gMSA Account Enumeration", target)
+    print_section("gMSA Account Enumeration", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

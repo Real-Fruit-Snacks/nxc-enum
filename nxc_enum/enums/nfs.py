@@ -17,7 +17,7 @@ def enum_nfs(args, cache):
     Lists exported NFS shares and their access controls.
     """
     target = cache.target if cache else args.target
-    print_section("NFS Share Enumeration", target)
+    print_section("NFS Share Enumeration", target, cache=cache)
 
     # Skip in proxy mode - NFS RPC doesn't work over proxychains
     if is_proxy_mode():

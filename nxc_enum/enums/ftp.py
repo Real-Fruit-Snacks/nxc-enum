@@ -112,7 +112,7 @@ def enum_ftp(args, cache):
     3. Directory listing on successful login
     """
     target = cache.target if cache else args.target
-    print_section("FTP Enumeration", target)
+    print_section("FTP Enumeration", target, cache=cache)
 
     ftp_info = {
         "accessible": False,

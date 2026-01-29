@@ -32,7 +32,7 @@ def enum_laps(args, cache):
         --laps-computer: Filter to computer names matching pattern (e.g., 'SRV*')
     """
     target = cache.target if cache else args.target
-    print_section("LAPS Deployment Check", target)
+    print_section("LAPS Deployment Check", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

@@ -7,7 +7,7 @@ from ..core.output import JSON_DATA, output, print_section, status
 def enum_target_info(args, creds: list = None, cache=None):
     """Display target information."""
     target = cache.target if cache else args.target
-    print_section("Target Information")
+    print_section("Target Information", cache=cache)
     status(f"Target ........... {target}")
 
     if creds and len(creds) > 1:

@@ -42,7 +42,7 @@ def enum_gpp_password(args, cache):
     MS14-025: https://docs.microsoft.com/en-us/security-updates/SecurityBulletins/2014/ms14-025
     """
     target = cache.target if cache else args.target
-    print_section("GPP Password Enumeration", target)
+    print_section("GPP Password Enumeration", target, cache=cache)
 
     # SYSVOL only exists on Domain Controllers - skip member servers
     domain_info = cache.domain_info or {}

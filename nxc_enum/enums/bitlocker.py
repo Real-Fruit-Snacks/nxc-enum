@@ -21,7 +21,7 @@ def enum_bitlocker(args, cache, is_admin: bool = False):
     Requires local admin privileges.
     """
     target = cache.target if cache else args.target
-    print_section("BitLocker Status", target)
+    print_section("BitLocker Status", target, cache=cache)
 
     if not is_admin:
         status("Skipping: requires local admin (current user is not admin)", "info")

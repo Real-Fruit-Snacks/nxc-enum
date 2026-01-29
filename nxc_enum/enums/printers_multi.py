@@ -17,7 +17,7 @@ _lock = threading.Lock()
 def enum_printers_multi(args, creds: list, results, cache=None):
     """Enumerate printers for multiple credentials."""
     target = cache.target if cache else args.target
-    print_section("Printers", target)
+    print_section("Printers", target, cache=cache)
     status(f"Checking print spooler for {len(creds)} user(s)...")
 
     def get_printers_for_cred(cred):

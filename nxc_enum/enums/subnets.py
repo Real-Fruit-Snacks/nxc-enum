@@ -20,7 +20,7 @@ def enum_subnets(args, cache):
     Uses the get-network LDAP module to enumerate AD site/subnet configuration.
     """
     target = cache.target if cache else args.target
-    print_section("AD Sites and Subnets", target)
+    print_section("AD Sites and Subnets", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

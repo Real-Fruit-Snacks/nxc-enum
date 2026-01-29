@@ -100,7 +100,7 @@ def parse_verbose_share_info(stdout: str) -> dict:
 def enum_shares(args, cache):
     """Enumerate SMB shares."""
     target = cache.target if cache else args.target
-    print_section("Shares via RPC", target)
+    print_section("Shares via RPC", target, cache=cache)
 
     auth = cache.auth_args
     shares_args = ["smb", target] + auth + ["--shares"]

@@ -189,15 +189,19 @@ def print_banner():
     output("")
 
 
-def print_section(title: str, target: str = ""):
+def print_section(title: str, target: str = "", cache=None):
     """Print a section header in enum4linux-ng style.
 
     Args:
         title: Section title
         target: Target IP/hostname to append to title
+        cache: Optional EnumCache to show current user in header
     """
     if target:
         title = f"{title} for {target}"
+    if cache and hasattr(cache, "get_current_user"):
+        user = cache.get_current_user()
+        title = f"{title} (as {user})"
     box_width = len(title) + 10
     output("")
     output(c(f" {'=' * box_width}", Colors.CYAN))

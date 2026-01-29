@@ -31,7 +31,7 @@ def enum_asreproast(args, cache):
     This is enumeration only - does not request tickets or obtain hashes.
     """
     target = cache.target if cache else args.target
-    print_section("AS-REP Roastable Accounts", target)
+    print_section("AS-REP Roastable Accounts", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

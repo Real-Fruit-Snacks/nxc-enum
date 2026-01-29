@@ -23,7 +23,7 @@ RE_SPN_CONTINUATION = re.compile(r"^LDAP\s+\S+\s+\d+\s+\S+\s{10,}(\S+)$")
 def enum_kerberoastable(args, cache):
     """Identify Kerberoastable accounts (users with SPNs) without requesting tickets."""
     target = cache.target if cache else args.target
-    print_section("Kerberoastable Accounts", target)
+    print_section("Kerberoastable Accounts", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

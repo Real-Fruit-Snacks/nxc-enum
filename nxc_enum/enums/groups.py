@@ -185,7 +185,7 @@ def get_group_members(
 def enum_groups(args, cache):
     """Enumerate domain groups."""
     target = cache.target if cache else args.target
-    print_section("Groups via RPC", target)
+    print_section("Groups via RPC", target, cache=cache)
 
     auth = cache.auth_args
     groups = {}

@@ -9,7 +9,7 @@ from ..parsing.nxc_output import is_nxc_noise_line
 def enum_descriptions(args, cache):
     """Extract user description fields."""
     target = cache.target if cache else args.target
-    print_section("User Descriptions", target)
+    print_section("User Descriptions", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

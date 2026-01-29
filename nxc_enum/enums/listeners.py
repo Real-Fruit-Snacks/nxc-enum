@@ -10,7 +10,7 @@ from ..core.runner import check_port
 def enum_listeners(args, listener_results: dict, cache=None):
     """Scan for open ports in parallel."""
     target = cache.target if cache else args.target
-    print_section("Listener Scan", target)
+    print_section("Listener Scan", target, cache=cache)
 
     ports = [
         (389, "LDAP"),

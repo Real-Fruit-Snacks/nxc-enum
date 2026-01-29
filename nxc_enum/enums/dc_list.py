@@ -342,7 +342,7 @@ def _parse_verbose_dc_info(stdout: str) -> dict:
 def enum_dc_list(args, cache):
     """List domain controllers and trusts."""
     target = cache.target if cache else args.target
-    print_section("Domain Controllers & Trusts", target)
+    print_section("Domain Controllers & Trusts", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

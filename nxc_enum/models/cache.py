@@ -287,6 +287,21 @@ class EnumCache:
             }
         )
 
+    def get_current_user(self) -> str:
+        """Get display string for the current user/session.
+
+        Returns:
+            User display string like "Guest", "null session", or "DOMAIN\\user"
+        """
+        if self.anonymous_mode:
+            # Check if it's guest or null session
+            if self.primary_credential and self.primary_credential.user.lower() == "guest":
+                return "Guest"
+            return "null session"
+        if self.primary_credential:
+            return self.primary_credential.display_name()
+        return "unknown"
+
     def get_dns_args(self) -> list:
         """Build DNS-related arguments for nxc commands.
 

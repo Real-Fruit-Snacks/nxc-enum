@@ -215,7 +215,7 @@ def enum_ioxid(args, cache):
     Multi-homed hosts indicate potential pivot points between networks.
     """
     target = cache.target if cache else args.target
-    print_section("iOXIDResolver Network Discovery", target)
+    print_section("iOXIDResolver Network Discovery", target, cache=cache)
 
     # Skip in proxy mode - DCOM raw sockets don't work over proxychains
     if is_proxy_mode():

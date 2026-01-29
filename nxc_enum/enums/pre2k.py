@@ -21,7 +21,7 @@ def enum_pre2k(args, cache):
     Uses the pre2k LDAP module to find vulnerable computer accounts.
     """
     target = cache.target if cache else args.target
-    print_section("Pre-Windows 2000 Computers", target)
+    print_section("Pre-Windows 2000 Computers", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

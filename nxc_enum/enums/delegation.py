@@ -152,7 +152,7 @@ def _parse_verbose_info(lines: list) -> dict:
 def enum_delegation(args, cache):
     """Find accounts with delegation misconfigurations."""
     target = cache.target if cache else args.target
-    print_section("Delegation Enumeration", target)
+    print_section("Delegation Enumeration", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

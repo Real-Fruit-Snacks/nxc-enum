@@ -178,7 +178,7 @@ def parse_verbose_policy_info(stdout: str) -> dict:
 def enum_policies(args, cache):
     """Enumerate password policies."""
     target = cache.target if cache else args.target
-    print_section("Policies via RPC", target)
+    print_section("Policies via RPC", target, cache=cache)
 
     auth = cache.auth_args
     policies_args = ["smb", target] + auth + ["--pass-pol"]

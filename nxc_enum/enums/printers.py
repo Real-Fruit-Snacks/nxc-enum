@@ -132,7 +132,7 @@ def parse_verbose_spooler_info(stdout: str) -> dict:
 def enum_printers(args, cache):
     """Enumerate printers via RPC."""
     target = cache.target if cache else args.target
-    print_section("Printers via RPC", target)
+    print_section("Printers via RPC", target, cache=cache)
 
     auth = cache.auth_args
     printers_args = ["smb", target] + auth + ["-M", "spooler"]

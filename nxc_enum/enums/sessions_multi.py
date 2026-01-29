@@ -145,7 +145,7 @@ def _parse_qwinsta_parts(parts: list) -> dict:
 def enum_sessions_multi(args, creds: list, results, cache=None):
     """Enumerate sessions for multiple credentials (requires local admin)."""
     target = cache.target if cache else args.target
-    print_section("Active Sessions", target)
+    print_section("Active Sessions", target, cache=cache)
 
     admin_creds = [cred for cred in creds if cred.is_admin]
     if not admin_creds:

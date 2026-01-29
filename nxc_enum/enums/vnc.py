@@ -69,7 +69,7 @@ def enum_vnc(args, cache):
     - Screenshot capture for intel
     """
     target = cache.target if cache else args.target
-    print_section("VNC Service Detection", target)
+    print_section("VNC Service Detection", target, cache=cache)
 
     # Skip in proxy mode - raw socket banner grab doesn't work over proxychains
     if is_proxy_mode():

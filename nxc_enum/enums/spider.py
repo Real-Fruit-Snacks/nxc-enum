@@ -110,7 +110,7 @@ def enum_spider(args, cache):
     Identifies files that may contain credentials, configs, or sensitive data.
     """
     target = cache.target if cache else args.target
-    print_section("Share File Discovery (Spider)", target)
+    print_section("Share File Discovery (Spider)", target, cache=cache)
 
     # Check if we have readable shares from prior enumeration
     readable_shares = getattr(cache, "readable_shares", None)

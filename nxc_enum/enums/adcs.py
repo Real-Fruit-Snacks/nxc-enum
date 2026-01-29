@@ -17,7 +17,7 @@ def enum_adcs(args, cache):
         --adcs-base-dn: Custom base DN for ADCS search
     """
     target = cache.target if cache else args.target
-    print_section("ADCS Enumeration", target)
+    print_section("ADCS Enumeration", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

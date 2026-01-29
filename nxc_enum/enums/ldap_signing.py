@@ -29,7 +29,7 @@ def enum_ldap_signing(args, cache):
     Analyzes LDAP connection output to determine if signing is enforced.
     """
     target = cache.target if cache else args.target
-    print_section("LDAP Signing Check", target)
+    print_section("LDAP Signing Check", target, cache=cache)
 
     auth = cache.auth_args
     status("Checking LDAP signing requirements...")

@@ -23,7 +23,7 @@ def enum_rdp(args, cache):
     Uses nxc rdp module to probe RDP configuration.
     """
     target = cache.target if cache else args.target
-    print_section("RDP Status Check", target)
+    print_section("RDP Status Check", target, cache=cache)
 
     # Skip if port pre-scan determined RDP is unavailable
     if cache.rdp_available is False:

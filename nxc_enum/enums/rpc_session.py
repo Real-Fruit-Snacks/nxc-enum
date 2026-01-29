@@ -175,7 +175,7 @@ def check_session(args, session_type: str, cmd_args: list, label: str) -> tuple:
 def enum_rpc_session(args, cache):
     """Check RPC session access (null, guest, authenticated)."""
     target = cache.target if cache else args.target
-    print_section("RPC Session Check", target)
+    print_section("RPC Session Check", target, cache=cache)
 
     sessions = {}
     session_details = {}  # Store verbose details for each session type

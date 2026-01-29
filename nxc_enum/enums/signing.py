@@ -434,7 +434,7 @@ def _display_per_host_info(verbose_data: dict):
 def enum_signing(args, cache):
     """Check SMB signing requirements with verbose output parsing."""
     target = cache.target if cache else args.target
-    print_section("SMB Signing Check", target)
+    print_section("SMB Signing Check", target, cache=cache)
 
     status("Checking SMB signing requirements...")
 

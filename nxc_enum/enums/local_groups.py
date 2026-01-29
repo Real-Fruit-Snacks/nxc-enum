@@ -26,7 +26,7 @@ def enum_local_groups(args, cache, is_admin: bool = False):
     Requires local admin privileges.
     """
     target = cache.target if cache else args.target
-    print_section("Local Groups", target)
+    print_section("Local Groups", target, cache=cache)
 
     if not is_admin:
         status("Skipping: requires local admin (current user is not admin)", "info")

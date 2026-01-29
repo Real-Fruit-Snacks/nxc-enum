@@ -205,7 +205,7 @@ def parse_verbose_info(stdout: str) -> dict:
 def enum_pwd_not_required(args, cache):
     """Find accounts without password requirement."""
     target = cache.target if cache else args.target
-    print_section("Password Not Required", target)
+    print_section("Password Not Required", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

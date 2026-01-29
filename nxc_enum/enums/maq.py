@@ -11,7 +11,7 @@ from ..parsing.nxc_output import is_nxc_noise_line
 def enum_maq(args, cache):
     """Check machine account quota."""
     target = cache.target if cache else args.target
-    print_section("Machine Account Quota", target)
+    print_section("Machine Account Quota", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

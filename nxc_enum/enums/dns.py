@@ -23,7 +23,7 @@ def enum_dns(args, cache):
     so we recommend LDAP-based tools instead.
     """
     target = cache.target if cache else args.target
-    print_section("DNS Enumeration", target)
+    print_section("DNS Enumeration", target, cache=cache)
 
     # Check if LDAP is available
     listener_results = getattr(cache, "listener_results", {})

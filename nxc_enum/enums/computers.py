@@ -109,7 +109,7 @@ def categorize_os(os_string) -> str:
 def enum_computers(args, cache):
     """Enumerate domain computers."""
     target = cache.target if cache else args.target
-    print_section("Domain Computers", target)
+    print_section("Domain Computers", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

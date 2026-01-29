@@ -124,7 +124,7 @@ def parse_info_lines(stdout: str, users: dict) -> dict:
 def enum_users(args, cache):
     """Enumerate domain users."""
     target = cache.target if cache else args.target
-    print_section("Users via RPC", target)
+    print_section("Users via RPC", target, cache=cache)
 
     auth = cache.auth_args
 

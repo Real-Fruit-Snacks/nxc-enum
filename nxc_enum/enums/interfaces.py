@@ -34,7 +34,7 @@ def enum_interfaces(args, cache):
     Multi-homed hosts are valuable pivot points in penetration tests.
     """
     target = cache.target if cache else args.target
-    print_section("Network Interface Enumeration", target)
+    print_section("Network Interface Enumeration", target, cache=cache)
 
     auth = cache.auth_args
     status("Enumerating network interfaces...")

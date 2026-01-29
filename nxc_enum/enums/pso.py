@@ -67,7 +67,7 @@ def enum_pso(args, cache):
     Weak PSOs = easier password attacks on affected accounts.
     """
     target = cache.target if cache else args.target
-    print_section("Fine-Grained Password Policies (PSO)", target)
+    print_section("Fine-Grained Password Policies (PSO)", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

@@ -266,7 +266,7 @@ def infer_version_from_build(build: str) -> str:
 def enum_os_info(args, cache):
     """Get OS information."""
     target = cache.target if cache else args.target
-    print_section("OS Information via RPC", target)
+    print_section("OS Information via RPC", target, cache=cache)
 
     auth = cache.auth_args
     rc, stdout, stderr = cache.get_smb_basic(target, auth)

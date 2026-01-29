@@ -11,7 +11,7 @@ from ..parsing.nxc_output import is_nxc_noise_line
 def enum_av(args, cache, is_admin: bool = True):
     """Enumerate installed AV/EDR solutions (requires local admin)."""
     target = cache.target if cache else args.target
-    print_section("AV/EDR Detection", target)
+    print_section("AV/EDR Detection", target, cache=cache)
 
     if not is_admin:
         cache.av_check_skipped = True

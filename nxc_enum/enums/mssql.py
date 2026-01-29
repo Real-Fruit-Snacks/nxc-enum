@@ -25,7 +25,7 @@ def enum_mssql(args, cache):
     NO SQL queries are executed on the target.
     """
     target = cache.target if cache else args.target
-    print_section("MSSQL Detection", target)
+    print_section("MSSQL Detection", target, cache=cache)
 
     # Skip if port pre-scan determined MSSQL is unavailable
     if cache.mssql_available is False:

@@ -38,7 +38,7 @@ def enum_sccm(args, cache):
     - Admin access to managed systems via SCCM console
     """
     target = cache.target if cache else args.target
-    print_section("SCCM/MECM Discovery", target)
+    print_section("SCCM/MECM Discovery", target, cache=cache)
 
     auth = cache.auth_args
     status("Searching for SCCM/MECM infrastructure...")

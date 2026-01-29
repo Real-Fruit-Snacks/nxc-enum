@@ -146,7 +146,7 @@ def _parse_qwinsta_line(parts: list, start_idx: int) -> dict | None:
 def enum_sessions(args, cache, is_admin: bool = True):
     """Enumerate active sessions (requires local admin)."""
     target = cache.target if cache else args.target
-    print_section("Active Sessions", target)
+    print_section("Active Sessions", target, cache=cache)
 
     if not is_admin:
         status("Skipping: requires local admin (current user is not admin)", "info")

@@ -149,7 +149,7 @@ def parse_loggedon_verbose(stdout: str) -> dict:
 def enum_loggedon(args, cache, is_admin: bool = True):
     """Enumerate logged on users (requires local admin)."""
     target = cache.target if cache else args.target
-    print_section("Logged On Users", target)
+    print_section("Logged On Users", target, cache=cache)
 
     if not is_admin:
         status("Skipping: requires local admin (current user is not admin)", "info")

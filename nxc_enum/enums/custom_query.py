@@ -138,7 +138,7 @@ def enum_custom_query(args, cache):
         cache: EnumCache instance with target and auth information
     """
     target = cache.target if cache else args.target
-    print_section("Custom LDAP Query", target)
+    print_section("Custom LDAP Query", target, cache=cache)
 
     # Validate that query is provided
     if not args.query:

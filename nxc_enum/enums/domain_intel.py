@@ -251,7 +251,7 @@ def parse_verbose_domain_output(stdout: str) -> dict:
 def enum_domain_intelligence(args, cache, listener_results: dict):
     """Consolidated domain information from LDAP, SMB, and RPC sources."""
     target = cache.target if cache else args.target
-    print_section("Domain Intelligence", target)
+    print_section("Domain Intelligence", target, cache=cache)
 
     auth = cache.auth_args
     domain_info = {

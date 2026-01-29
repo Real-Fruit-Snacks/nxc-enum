@@ -152,7 +152,7 @@ def parse_webdav_verbose(stdout: str, stderr: str) -> dict:
 def enum_webdav(args, cache):
     """Check WebClient service status."""
     target = cache.target if cache else args.target
-    print_section("WebDAV/WebClient Check", target)
+    print_section("WebDAV/WebClient Check", target, cache=cache)
 
     auth = cache.auth_args
     status("Checking WebClient service status...")

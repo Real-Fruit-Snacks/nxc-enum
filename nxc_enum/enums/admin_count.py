@@ -180,7 +180,7 @@ def _classify_admin_accounts(accounts: list) -> dict:
 def enum_admin_count(args, cache):
     """Find accounts with adminCount attribute."""
     target = cache.target if cache else args.target
-    print_section("AdminCount Accounts", target)
+    print_section("AdminCount Accounts", target, cache=cache)
 
     # Skip if LDAP is unavailable (determined during cache priming)
     if not cache.ldap_available:

@@ -249,7 +249,7 @@ def get_dialect_security_notes(dialect: str) -> list:
 def enum_smb_info(args, cache):
     """Get SMB information including signing, dialect, and capabilities."""
     target = cache.target if cache else args.target
-    print_section("SMB Dialect Check", target)
+    print_section("SMB Dialect Check", target, cache=cache)
 
     status("Trying on 445/tcp")
 
