@@ -17,7 +17,7 @@ _lock = threading.Lock()
 def enum_loggedon_multi(args, creds: list, results, cache=None):
     """Enumerate logged on users for multiple credentials (requires local admin)."""
     target = cache.target if cache else args.target
-    print_section("Logged On Users", target, cache=cache)
+    print_section("Logged On Users", target)  # No cache - tests multiple users
 
     admin_creds = [cred for cred in creds if cred.is_admin]
     if not admin_creds:

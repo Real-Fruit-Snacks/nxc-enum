@@ -14,7 +14,7 @@ _lock = threading.Lock()
 def enum_av_multi(args, creds: list, results, cache=None):
     """Enumerate AV/EDR for multiple credentials (requires local admin)."""
     target = cache.target if cache else args.target
-    print_section("AV/EDR Detection", target, cache=cache)
+    print_section("AV/EDR Detection", target)  # No cache - tests multiple users
 
     admin_creds = [cred for cred in creds if cred.is_admin]
     if not admin_creds:

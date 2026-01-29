@@ -15,7 +15,7 @@ _lock = threading.Lock()
 def enum_shares_multi(args, creds: list, results, cache=None):
     """Enumerate shares for multiple credentials and display as matrix."""
     target = cache.target if cache else args.target
-    print_section("Shares Matrix", target, cache=cache)
+    print_section("Shares Matrix", target)  # No cache - tests multiple users
     status(f"Enumerating shares for {len(creds)} user(s)...")
 
     def get_shares_for_cred(cred):
