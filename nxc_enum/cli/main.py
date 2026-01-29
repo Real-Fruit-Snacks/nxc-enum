@@ -505,12 +505,12 @@ def _run_single_target(
             cred_str = f"{user_part}:{cred.password}"
         elif cred.hash:
             cred_str = f"{user_part}:{cred.hash}"
-        elif cred.ccache_file:
-            cred_str = f"{user_part}:KRB5CCACHE:{cred.ccache_file}"
-        elif cred.pfx_file:
-            cred_str = f"{user_part}:PFX:{cred.pfx_file}"
-        elif cred.pem_file:
-            cred_str = f"{user_part}:PEM:{cred.pem_file}"
+        elif cred.use_kcache:
+            cred_str = f"{user_part}:KCACHE"
+        elif cred.pfx_cert:
+            cred_str = f"{user_part}:PFX:{cred.pfx_cert}"
+        elif cred.pem_cert:
+            cred_str = f"{user_part}:PEM:{cred.pem_cert}"
         else:
             cred_str = f"{user_part}:(no secret)"
         cache.copy_paste_data["valid_credentials"].add(cred_str)
