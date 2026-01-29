@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2025-01-28
+
+### Added
+- **User Context in Section Headers** - All enumeration section headers now show which credential is being used
+  - Single-credential modules show `(as username)` in header (e.g., "Shares via RPC for 10.0.0.1 (as admin)")
+  - Multi-credential modules (Shares Matrix, Sessions, etc.) omit user since they test all credentials
+  - Guest/anonymous sessions show `(as Guest)` or `(as null session)`
+  - Helps clarify which credential's permissions are reflected in each section's results
+
+### Fixed
+- **Duplicate /etc/hosts Entries** - Fixed issue where hostname was shown twice in hosts file suggestion
+  when NetBIOS domain name matched the hostname (common for workgroup machines)
+- **Copy-Paste Credential Output** - Fixed AttributeError when using guest/anonymous sessions
+  by correcting Credential attribute names (`use_kcache`, `pfx_cert`, `pem_cert`)
+
+## [1.10.0] - 2025-01-27
+
+### Fixed
+- **Error Detection** - Improved LDAP failure detection to avoid false positives
+  - Uses specific failure indicators instead of broad "error" keyword matching
+  - Prevents domain names like "services.local" from triggering error detection
+
+### Added
+- **Roasting Command Output** - Enhanced AS-REP roasting and Kerberoasting output
+
+## [1.9.0] - 2025-01-26
+
 ### Added
 - **Auto-Exploit Warnings** - Next Steps commands that use auto-exploitation modules are now flagged
   - Displays `!!! AUTO-EXPLOIT:` warning with description when suggesting exploit modules
