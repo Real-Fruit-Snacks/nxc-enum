@@ -158,11 +158,15 @@ def check_hosts_resolution_from_info(target_ip: str, smb_info: dict) -> Tuple[bo
         return True, None
 
     # Generate hosts file line
-    # Format: IP FQDN NETBIOS_DOMAIN HOSTNAME
+    # Format: IP FQDN NETBIOS_DOMAIN HOSTNAME (deduplicated, case-insensitive)
     parts = [target_ip, fqdn]
-    if domain_name:
+    seen = {target_ip.lower(), fqdn.lower()}
+
+    if domain_name and domain_name.lower() not in seen:
         parts.append(domain_name)
-    parts.append(hostname)
+        seen.add(domain_name.lower())
+    if hostname and hostname.lower() not in seen:
+        parts.append(hostname)
 
     hosts_line = "  ".join(parts)
     return False, hosts_line
