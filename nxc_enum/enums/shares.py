@@ -253,7 +253,7 @@ def enum_shares(args, cache):
                                 perms = "NO ACCESS"
                                 remark = " ".join(parts[i + 2 :])
                                 break
-                        
+
                         if perm_idx > 0:
                             share_name = " ".join(parts[:perm_idx])
                         else:

@@ -88,8 +88,8 @@ def parse_shares_from_output(stdout: str) -> list[tuple[str, str, str]]:
                                 share_name = " ".join(parts[:idx])
                                 perm_found = True
                                 break
-                        
-                        if not perm_found:
+
+                       if not perm_found:
                             continue
                     else:
                         share_name = parts[0]
