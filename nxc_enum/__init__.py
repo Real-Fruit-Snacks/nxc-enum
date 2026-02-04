@@ -2,7 +2,7 @@
 nxc-enum - NetExec wrapper with enum4linux-ng style output
 """
 
-__version__ = "1.12.0"
+__version__ = "1.12.1"
 
 from .cli.main import main
 
