@@ -161,7 +161,7 @@ def enum_shares(args, cache):
         else:
             # No credentials, suggest anonymous
             output(f"  smbclient -L //{target} -N")
-        
+
         output("")
         return
 
