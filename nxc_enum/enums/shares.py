@@ -120,7 +120,7 @@ def enum_shares(args, cache):
 
         # Inform user about manual smbclient option with proper authentication
         status("You can try enumerating shares manually with:", "info")
-        
+
         # Check if we have credentials to suggest the proper command
         if cache and cache.primary_credential:
             cred = cache.primary_credential
@@ -128,7 +128,9 @@ def enum_shares(args, cache):
                 # Password authentication
                 output(f"  smbclient -L //{target} -U '{cred.user}%{cred.password}'")
                 if cred.domain and cred.domain != ".":
-                    output(f"  # Or with domain: smbclient -L //{target} -U '{cred.domain}\\{cred.user}%{cred.password}'")
+                    output(
+                        f"  # Or with domain: smbclient -L //{target} -U '{cred.domain}\\{cred.user}%{cred.password}'"
+                    )
             elif cred.hash:
                 # NTLM hash authentication
                 output(f"  smbclient -L //{target} -U '{cred.user}' --pw-nt-hash -p '{cred.hash}'")
@@ -137,13 +139,15 @@ def enum_shares(args, cache):
             else:
                 # No password or hash, try anonymous
                 output(f"  smbclient -L //{target} -N")
-        elif hasattr(args, 'user') and args.user:
+        elif hasattr(args, "user") and args.user:
             # Use args directly if no cache
-            if hasattr(args, 'password') and args.password:
+            if hasattr(args, "password") and args.password:
                 output(f"  smbclient -L //{target} -U '{args.user}%{args.password}'")
-                if hasattr(args, 'domain') and args.domain and args.domain != ".":
-                    output(f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}%{args.password}'")
-            elif hasattr(args, 'hash') and args.hash:
+                if hasattr(args, "domain") and args.domain and args.domain != ".":
+                    output(
+                        f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}%{args.password}'"
+                    )
+            elif hasattr(args, "hash") and args.hash:
                 output(f"  smbclient -L //{target} -U '{args.user}' --pw-nt-hash -p '{args.hash}'")
                 if hasattr(args, 'domain') and args.domain and args.domain != ".":
                     output(f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}' --pw-nt-hash -p '{args.hash}'")
