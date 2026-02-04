@@ -135,7 +135,9 @@ def enum_shares(args, cache):
                 # NTLM hash authentication
                 output(f"  smbclient -L //{target} -U '{cred.user}' --pw-nt-hash -p '{cred.hash}'")
                 if cred.domain and cred.domain != ".":
-                    output(f"  # Or with domain: smbclient -L //{target} -U '{cred.domain}\\{cred.user}' --pw-nt-hash -p '{cred.hash}'")
+                    output(
+                        f"  # Or with domain: smbclient -L //{target} -U '{cred.domain}\\{cred.user}' --pw-nt-hash -p '{cred.hash}'"
+                    )
             else:
                 # No password or hash, try anonymous
                 output(f"  smbclient -L //{target} -N")
@@ -149,8 +151,10 @@ def enum_shares(args, cache):
                     )
             elif hasattr(args, "hash") and args.hash:
                 output(f"  smbclient -L //{target} -U '{args.user}' --pw-nt-hash -p '{args.hash}'")
-                if hasattr(args, 'domain') and args.domain and args.domain != ".":
-                    output(f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}' --pw-nt-hash -p '{args.hash}'")
+                if hasattr(args, "domain") and args.domain and args.domain != ".":
+                    output(
+                        f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}' --pw-nt-hash -p '{args.hash}'"
+                    )
             else:
                 # User but no password/hash
                 output(f"  smbclient -L //{target} -U '{args.user}%<password>'")
