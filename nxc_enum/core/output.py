@@ -1,5 +1,6 @@
 """Output and display functions."""
 
+import sys
 import threading
 from typing import List
 
@@ -147,13 +148,16 @@ def output_direct(msg: str):
     Used for printing buffered content without double-buffering.
     Still respects file output if requested.
     """
-    print(msg)
+    with _target_print_lock:
+        print(msg)
+        sys.stdout.flush()
+
     if _output_file_requested:
         with _buffer_lock:
             OUTPUT_BUFFER.append(msg)
 
 
-def output(msg: str):
+def output(msg: str, force_direct: bool = False):
     """Print and optionally capture output. Supports parallel mode buffering.
 
     Supports two levels of buffering:
@@ -162,9 +166,18 @@ def output(msg: str):
 
     Target-level buffering takes precedence and captures module-level output.
 
+    Args:
+        msg: Message to print
+        force_direct: If True, bypasses all buffering and prints immediately.
+            Use sparingly for real-time progress updates during long operations.
+
     Thread-safe: Uses lock when appending to OUTPUT_BUFFER to prevent
     race conditions during parallel module execution.
     """
+    if force_direct:
+        output_direct(msg)
+        return
+
     # Target-level parallel buffering takes precedence
     if _target_parallel_mode and hasattr(_target_local, "buffer"):
         _target_local.buffer.append(msg)
@@ -176,6 +189,7 @@ def output(msg: str):
         _thread_local.buffer.append(msg)
     else:
         print(msg)
+        sys.stdout.flush()
 
     # Only buffer if file output requested - use lock for thread safety
     if _output_file_requested:
@@ -209,10 +223,16 @@ def print_section(title: str, target: str = "", cache=None):
     output(c(f" {'=' * box_width}", Colors.CYAN))
 
 
-def status(msg: str, level: str = "info"):
-    """Print a status message with indicator."""
+def status(msg: str, level: str = "info", force_direct: bool = False):
+    """Print a status message with indicator.
+
+    Args:
+        msg: Status message
+        level: Indicator level (info, success, error, warning)
+        force_direct: If True, bypasses buffering and prints immediately
+    """
     indicator = INDICATORS.get(level, INDICATORS["info"])
-    output(f"{indicator} {msg}")
+    output(f"{indicator} {msg}", force_direct=force_direct)
 
 
 def _is_debug_noise_line(line: str) -> bool:

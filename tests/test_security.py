@@ -193,6 +193,57 @@ class TestCredentialValidation(unittest.TestCase):
         self.assertIn("hash=None", repr_str)
 
 
+class TestAnonymousSessions(unittest.TestCase):
+    """Test anonymous/null/guest session detection."""
+
+    def test_is_anonymous_null_session(self):
+        """Test is_anonymous for null session (empty user and password)."""
+        cred = Credential(user="", password="")
+        self.assertTrue(cred.is_anonymous)
+
+    def test_is_anonymous_guest_session(self):
+        """Test is_anonymous for guest session."""
+        cred = Credential(user="Guest", password="")
+        self.assertTrue(cred.is_anonymous)
+
+    def test_is_anonymous_guest_case_insensitive(self):
+        """Test is_anonymous for guest session is case insensitive."""
+        cred = Credential(user="guest", password="")
+        self.assertTrue(cred.is_anonymous)
+        cred = Credential(user="GUEST", password="")
+        self.assertTrue(cred.is_anonymous)
+
+    def test_is_anonymous_false_for_regular_cred(self):
+        """Test is_anonymous is False for regular credentials."""
+        cred = Credential(user="admin", password="secret")
+        self.assertFalse(cred.is_anonymous)
+
+    def test_is_anonymous_false_for_guest_with_password(self):
+        """Test is_anonymous is False for Guest user with password."""
+        cred = Credential(user="Guest", password="somepassword")
+        self.assertFalse(cred.is_anonymous)
+
+    def test_auth_type_null_session(self):
+        """Test auth_type() returns 'null' for null session."""
+        cred = Credential(user="", password="")
+        self.assertEqual(cred.auth_type(), "null")
+
+    def test_auth_type_guest_session(self):
+        """Test auth_type() returns 'guest' for guest session."""
+        cred = Credential(user="Guest", password="")
+        self.assertEqual(cred.auth_type(), "guest")
+
+    def test_display_name_null_session(self):
+        """Test display_name() returns 'NULL SESSION' for null session."""
+        cred = Credential(user="", password="")
+        self.assertEqual(cred.display_name(), "NULL SESSION")
+
+    def test_display_name_guest_session(self):
+        """Test display_name() returns 'Guest' for guest session."""
+        cred = Credential(user="Guest", password="")
+        self.assertEqual(cred.display_name(), "Guest")
+
+
 class TestLocalAuthentication(unittest.TestCase):
     """Test local authentication flag support."""
 

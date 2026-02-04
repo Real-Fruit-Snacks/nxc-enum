@@ -276,6 +276,20 @@ def get_external_tool_auth(
         if include_domain and domain and domain != "<domain>":
             result["auth_string"] += f" -d '{domain}'"
 
+    elif tool == "smbclient":
+        # smbclient: -U 'user%password' or -U 'user' --pw-nt-hash -p 'hash'
+        if ntlm_hash:
+            result["auth_string"] = f"-U '{user}' --pw-nt-hash -p '{ntlm_hash}'"
+        elif password is not None:
+            result["auth_string"] = f"-U '{user}%{password}'"
+        else:
+            result["auth_string"] = f"-U '{user}%<pass>'"
+
+        # Add domain if available
+        if include_domain and domain and domain != "<domain>":
+            # smbclient can use -W domain or domain\\user
+            result["auth_string"] += f" -W '{domain}'"
+
     else:
         # Generic fallback
         if password is not None:

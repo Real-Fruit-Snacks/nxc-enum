@@ -275,12 +275,15 @@ def _run_single_target(
                 elapsed_time=elapsed,
             )
     else:
-        # Credentials provided - report anonymous findings and continue with creds
+        # Credentials provided - also enumerate with anonymous access if available
         output("")
-        if anon_result.null_success or anon_result.guest_success:
+        if anon_result.working_credential:
+            # Add anonymous credential to list for multi-credential enumeration
+            # Insert at beginning so anonymous results show first (baseline comparison)
+            working_creds.insert(0, anon_result.working_credential)
             status(
-                "Note: Anonymous access detected but using provided credentials",
-                "info",
+                f"Adding {anon_result.session_type} session to enumeration for comparison",
+                "success",
             )
 
     # Detect multi-credential mode
@@ -338,8 +341,15 @@ def _run_single_target(
             working_creds = valid_creds
 
             # Select best credential for cached operations
+            # Priority: admin > non-anonymous > anonymous
             admin_creds = [cred for cred in working_creds if cred.is_admin]
-            primary_cred = admin_creds[0] if admin_creds else working_creds[0]
+            non_anon_creds = [cred for cred in working_creds if not cred.is_anonymous]
+            if admin_creds:
+                primary_cred = admin_creds[0]
+            elif non_anon_creds:
+                primary_cred = non_anon_creds[0]
+            else:
+                primary_cred = working_creds[0]
 
             try:
                 cache.auth_args = primary_cred.auth_args()
@@ -447,15 +457,17 @@ def _run_single_target(
             if admin_creds:
                 output(c("LOCAL ADMIN CREDENTIALS", Colors.RED + Colors.BOLD))
                 output(f"{'-'*50}")
+                admin_tag = c("[ADMIN]", Colors.RED)
                 for cred in admin_creds:
                     auth_type = cred.auth_type()
-                    if cred.password:
-                        cred_str = cred.password
+                    if cred.is_anonymous:
+                        output(f"  {admin_tag} {cred.display_name()} ({auth_type})")
+                    elif cred.password:
+                        output(f"  {admin_tag} {cred.user}:{cred.password} ({auth_type})")
                     elif cred.hash:
-                        cred_str = cred.hash[:32] + "..."
+                        output(f"  {admin_tag} {cred.user}:{cred.hash[:32]}... ({auth_type})")
                     else:
-                        cred_str = "N/A"
-                    output(f"  {c('[ADMIN]', Colors.RED)} {cred.user}:{cred_str} ({auth_type})")
+                        output(f"  {admin_tag} {cred.user} ({auth_type})")
                 output("")
 
             if std_creds:
@@ -463,13 +475,14 @@ def _run_single_target(
                 output(f"{'-'*50}")
                 for cred in std_creds:
                     auth_type = cred.auth_type()
-                    if cred.password:
-                        cred_str = cred.password
+                    if cred.is_anonymous:
+                        output(f"  {cred.display_name()} ({auth_type})")
+                    elif cred.password:
+                        output(f"  {cred.user}:{cred.password} ({auth_type})")
                     elif cred.hash:
-                        cred_str = cred.hash[:32] + "..."
+                        output(f"  {cred.user}:{cred.hash[:32]}... ({auth_type})")
                     else:
-                        cred_str = "N/A"
-                    output(f"  {cred.user}:{cred_str} ({auth_type})")
+                        output(f"  {cred.user} ({auth_type})")
                 output("")
 
             # Summary
@@ -483,9 +496,9 @@ def _run_single_target(
             cred = working_creds[0]
             auth_type = cred.auth_type()
             if cred.is_admin:
-                status(f"Valid: {cred.user} ({auth_type}) - LOCAL ADMIN!", "success")
+                status(f"Valid: {cred.display_name()} ({auth_type}) - LOCAL ADMIN!", "success")
             else:
-                status(f"Valid: {cred.user} ({auth_type})", "success")
+                status(f"Valid: {cred.display_name()} ({auth_type})", "success")
 
         output("")
         status(f"Completed in {elapsed:.2f}s")

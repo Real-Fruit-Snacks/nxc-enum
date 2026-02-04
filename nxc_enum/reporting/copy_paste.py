@@ -70,7 +70,7 @@ def print_copy_paste_section(cache: "EnumCache", args) -> None:
     # Generate UNC paths from share names
     share_names = data.get("share_names", set())
     if share_names and target:
-        unc_paths = {f"\\\\{target}\\{s}" for s in share_names}
+        unc_paths = {f"\\\\\\\\{target}\\\\{s}" for s in share_names}
         _print_list_section("Share UNC Paths", unc_paths)
     _print_list_section("Kerberoastable Usernames", data.get("kerberoastable_users", set()))
     _print_list_section("SPNs", data.get("spns", set()))
@@ -276,7 +276,7 @@ def export_copy_paste_to_files(cache: "EnumCache", output_dir: str) -> int:
     # UNC paths from share names
     share_names = data.get("share_names", set())
     if share_names and target:
-        unc_paths = {f"\\\\{target}\\{s}" for s in share_names}
+        unc_paths = {f"\\\\\\\\{target}\\\\{s}" for s in share_names}
         if _write_list_to_file(dir_path, "Share UNC Paths", unc_paths):
             files_written += 1
 

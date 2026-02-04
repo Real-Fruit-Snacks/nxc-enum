@@ -16,6 +16,7 @@ def parse_shares_from_output(stdout: str) -> list[tuple[str, str, str]]:
         if "Share" in line and "Permissions" in line and "Remark" in line:
             in_share_table = True
             continue
+
         if "-----" in line and in_share_table:
             continue
 
@@ -69,21 +70,43 @@ def parse_shares_from_output(stdout: str) -> list[tuple[str, str, str]]:
                     pass
             else:
                 if parts:
-                    share_name = parts[0]
-                    # Iterate with absolute indices to avoid off-by-one errors
-                    for idx in range(1, len(parts)):
-                        p = parts[idx]
-                        if p in ["READ", "WRITE", "READ,WRITE"]:
-                            perms = p
-                            remark = " ".join(parts[idx + 1 :])
-                            break
-                        elif p == "NO" and idx + 1 < len(parts) and parts[idx + 1] == "ACCESS":
-                            perms = "NO ACCESS"
-                            remark = " ".join(parts[idx + 2 :])
-                            break
+                    if not line_stripped.startswith("SMB"):
+                        # If not starting with SMB, it MUST be in the table
+                        # and it MUST have a recognized permission or we skip it to avoid junk
+                        perm_found = False
+                        for idx in range(1, len(parts)):
+                            p = parts[idx]
+                            if p in ["READ", "WRITE", "READ,WRITE"]:
+                                perms = p
+                                remark = " ".join(parts[idx + 1 :])
+                                share_name = " ".join(parts[:idx])
+                                perm_found = True
+                                break
+                            elif p == "NO" and idx + 1 < len(parts) and parts[idx + 1] == "ACCESS":
+                                perms = "NO ACCESS"
+                                remark = " ".join(parts[idx + 2 :])
+                                share_name = " ".join(parts[:idx])
+                                perm_found = True
+                                break
+                        
+                        if not perm_found:
+                            continue
                     else:
-                        if len(parts) > 1:
-                            remark = " ".join(parts[1:])
+                        share_name = parts[0]
+                        # Iterate with absolute indices to avoid off-by-one errors
+                        for idx in range(1, len(parts)):
+                            p = parts[idx]
+                            if p in ["READ", "WRITE", "READ,WRITE"]:
+                                perms = p
+                                remark = " ".join(parts[idx + 1 :])
+                                break
+                            elif p == "NO" and idx + 1 < len(parts) and parts[idx + 1] == "ACCESS":
+                                perms = "NO ACCESS"
+                                remark = " ".join(parts[idx + 2 :])
+                                break
+                        else:
+                            if len(parts) > 1:
+                                remark = " ".join(parts[1:])
 
             if share_name and share_name not in [s[0] for s in shares]:
                 if share_name not in ("Share", "-----", "[*]", "[+]"):

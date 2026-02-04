@@ -13,6 +13,7 @@ from ..core.constants import (
 )
 from ..core.output import JSON_DATA, debug_nxc, output, print_section, status
 from ..core.runner import run_nxc
+from ..reporting.next_steps import get_external_tool_auth
 
 # Regex patterns for verbose domain output parsing
 # Domain functional level (e.g., "domainFunctionality: 7")
@@ -410,6 +411,27 @@ def enum_domain_intelligence(args, cache, listener_results: dict):
         JSON_DATA["domain"] = json_domain
 
     cache.domain_info = domain_info
+
+    # Add BloodHound CE collection as a next step for domain controllers
+    if domain_info["is_dc"] and cache.ldap_available:
+        # Don't include domain in auth_string - we'll add it separately with -d
+        bh_auth = get_external_tool_auth(args, cache, tool="nxc", include_domain=False)
+        dns_domain = domain_info.get("dns_domain", "")
+        fqdn = domain_info.get("fqdn", target)
+        if bh_auth.get("auth_string") and dns_domain:
+            bh_cmd = (
+                f"bloodhound-ce-python {bh_auth['auth_string']} "
+                f"-d {dns_domain} -dc {fqdn} -ns {target} -c All --zip"
+            )
+            bh_desc = "Collect AD data for BloodHound CE attack path analysis"
+            if bh_auth.get("alt_auth_hint"):
+                bh_desc += bh_auth["alt_auth_hint"]
+            cache.add_next_step(
+                finding="Domain Controller with LDAP access",
+                command=bh_cmd,
+                description=bh_desc,
+                priority="medium",
+            )
 
 
 def _display_verbose_domain_info(domain_info: dict):

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-02-04
+
+### Changed
+- **Removed smbclient Fallback** - The tool no longer automatically executes `smbclient` when RPC share enumeration fails.
+  - Replaced automatic execution with informative manual command suggestions.
+  - Suggested commands automatically include appropriate authentication flags (`-U 'user%pass'`, `--pw-nt-hash`, or `-N`).
+  - Reduces unexpected external tool execution while providing clear paths for manual follow-up.
+- **Enhanced External Tool Auth** - Improved `get_external_tool_auth()` to explicitly support `smbclient` format.
+  - Recommended Next Steps for `smbclient` now use the correct `-U 'user%password'` or `--pw-nt-hash` syntax.
+  - Handles credential substitution for `smbclient` specific patterns like `%<password>`.
+
+### Fixed
+- **Share Parsing Cleanup** - Removed obsolete `smbclient` output parsing logic.
+
 ## [1.11.0] - 2025-01-28
 
 ### Added

